@@ -5,7 +5,7 @@ import io
 st.set_page_config(page_title="VolleyStats Rotations", page_icon="📊", layout="wide")
 
 # ==========================================
-# 1. LOGIQUE DE ROTATION ET DE SUBSTITUTION (Vos fonctions)
+# 1. LOGIQUE DE ROTATION ET DE SUBSTITUTION (Vos fonctions - Aucune modification)
 # ==========================================
 
 def rotate_positions(positions):
@@ -124,12 +124,13 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
 
 def generate_volleyball_analysis():
     """
-    Fonction principale pour exécuter l'analyse de tous les sets et créer le DataFrame final.
+    Simule tous les sets, crée un DataFrame par set, et retourne une liste de ces DataFrames, 
+    ainsi que le DataFrame global pour l'exportation.
     """
     game_data = {
         1: {
-            'initial_formation': [5, 15, 9, 8, 7, 23], # Positions I à VI
-            'initial_service': 'B', # Lescar sert au début
+            'initial_formation': [5, 15, 9, 8, 7, 23], 
+            'initial_service': 'B',
             'substitutions': {3: {4: [(4, 23)]}, 14: {15: [(3, 5)]}},
             'rally_outcomes': [1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1]  
         },
@@ -141,7 +142,7 @@ def generate_volleyball_analysis():
         },
         3: {
             'initial_formation': [4, 14, 15, 9, 8, 7],
-            'initial_service': 'R', # Mérignac sert au début
+            'initial_service': 'R', 
             'substitutions': {12: {15: [(5, 4)]}, 22: {23: [(3, 15)]}},
             'rally_outcomes': [1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0]
         },
@@ -159,7 +160,8 @@ def generate_volleyball_analysis():
         }
     }
 
-    all_results = []
+    df_by_set = {}
+    all_results_global = []
     
     for set_num, data in game_data.items():
         header, results = analyze_set(
@@ -169,43 +171,55 @@ def generate_volleyball_analysis():
             data['substitutions'], 
             data['rally_outcomes']
         )
-        # Ajouter le numéro de Set à chaque ligne pour l'exportation
-        for row in results:
-            row.insert(0, set_num) 
         
-        all_results.extend(results)
+        df_set = pd.DataFrame(results, columns=header)
+        df_by_set[set_num] = df_set
+        
+        # Préparer le DataFrame global pour l'exportation
+        for row in results:
+            row_with_set = [set_num] + row
+            all_results_global.append(row_with_set)
     
-    # Créer le DataFrame final
-    final_header = ['Set'] + header
-    df = pd.DataFrame(all_results, columns=final_header)
-    return df, final_header
+    global_header = ['Set'] + header
+    df_global = pd.DataFrame(all_results_global, columns=global_header)
+    
+    return df_by_set, df_global
 
 # ==========================================
-# 2. MAIN APP STREAMLIT (Interface)
+# 2. MAIN APP STREAMLIT (Interface) - Modifiée pour boucler
 # ==========================================
 
 def main():
     st.title("📊 Analyse Détaillée des Rotations et Substitutions")
     st.markdown("---")
 
-    # Générer le tableau de données
-    df_analysis, _ = generate_volleyball_analysis()
+    # Générer les tableaux de données
+    df_by_set, df_global = generate_volleyball_analysis()
 
     st.subheader("Simulations des Rotations et Substitutions (Lescar)")
-    st.info("**Explications :**\n\n- **Pos I à VI :** Numéro de joueur dans la position de rotation (I est le serveur).\n- **Service :** **S** (Lescar sert) ou **R** (Mérignac sert/Lescar reçoit).\n- **Changement :** Substitution effectuée au score du rallye (Entrant/Sortant).")
+    st.info("**Explications :**\n\n- **Pos I à VI :** Numéro de joueur dans la position de rotation (I est le serveur). 
+
+[Image of volleyball rotation diagram]
+\n- **Service :** **S** (Lescar sert) ou **R** (Mérignac sert/Lescar reçoit).\n- **Changement :** Substitution effectuée au score du rallye (Entrant/Sortant).")
     
-    # Affichage du tableau
-    st.dataframe(df_analysis, use_container_width=True)
+    # --- Affichage d'un tableau pour chaque Set ---
+    set_keys = list(df_by_set.keys())
+    
+    for set_num in set_keys:
+        st.header(f"Set {set_num}")
+        st.dataframe(df_by_set[set_num], use_container_width=True)
+        st.markdown("---") # Séparateur entre les sets
 
-    st.markdown("---")
+    # --- Bouton de téléchargement (utilise le DataFrame global) ---
+    st.header("Téléchargement")
 
-    # Conversion du DataFrame en CSV pour le bouton de téléchargement
-    csv_file = df_analysis.to_csv(index=False).encode('utf-8')
+    # Conversion du DataFrame global en CSV pour le bouton de téléchargement
+    csv_file = df_global.to_csv(index=False).encode('utf-8')
 
     st.download_button(
-        label="⬇️ Télécharger le Tableau d'Analyse (CSV)",
+        label="⬇️ Télécharger TOUTES les Données d'Analyse (CSV)",
         data=csv_file,
-        file_name='analyse_rotations_volleyball.csv',
+        file_name='analyse_rotations_volleyball_complete.csv',
         mime='text/csv',
     )
 
