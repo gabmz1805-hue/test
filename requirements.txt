@@ -1,0 +1,6 @@
+streamlit
+pdfplumber
+pandas
+pypdfium2
+plotly
+Pillow
