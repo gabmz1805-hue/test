@@ -1,302 +1,213 @@
 import streamlit as st
-import pdfplumber
 import pandas as pd
-import pypdfium2 as pdfium
-import re
-import gc
-import plotly.express as px
-import plotly.graph_objects as go
-from PIL import Image, ImageDraw
+import io
 
-st.set_page_config(page_title="VolleyStats Pro", page_icon="🏐", layout="wide")
+st.set_page_config(page_title="VolleyStats Rotations", page_icon="📊", layout="wide")
 
 # ==========================================
-# 1. ENGINE (Reading Data) - Déplacé au début
+# 1. LOGIQUE DE ROTATION ET DE SUBSTITUTION (Vos fonctions)
 # ==========================================
 
-@st.cache_data(show_spinner=False)
-def get_page_image(file_bytes):
-    """Renders PDF page to image using C++ engine (Fast & Low RAM)."""
-    pdf = pdfium.PdfDocument(file_bytes)
-    page = pdf[0]
-    scale = 1.0 # 72 DPI
-    bitmap = page.render(scale=scale)
-    pil_image = bitmap.to_pil()
-    page.close()
-    pdf.close()
-    gc.collect()
-    return pil_image, scale
+def rotate_positions(positions):
+    """
+    Effectue une rotation horaire des joueurs pour l'équipe (Lescar dans cet exemple).
+    [I, II, III, IV, V, VI] -> [VI, I, II, III, IV, V] (sens horaire)
+    """
+    return positions[-1:] + positions[:-1]
 
-def extract_match_info(file):
-    """Extracts Team Names and Set Scores."""
-    text = ""
-    with pdfplumber.open(file) as pdf:
-        text = pdf.pages[0].extract_text()
+def apply_substitutions(positions, lescar_score, merignac_score, subs_data):
+    """
+    Applique les substitutions de joueurs à la formation au score donné.
+    """
+    change_string = ""
+    updated_positions = list(positions)
     
-    lines = text.split('\n')
-    
-    # A. Detect Team Names
-    potential_names = []
-    for line in lines:
-        if "Début:" in line:
-            parts = line.split("Début:")
-            for part in parts[:-1]:
-                if "Fin:" in part: part = part.split("Fin:")[-1]
-                part = re.sub(r'\d{2}:\d{2}\s*R?', '', part)
-                clean_name = re.sub(r'\b(SA|SB|S|R)\b', '', part)
-                clean_name = re.sub(r'^[^A-Z]+|[^A-Z]+$', '', clean_name).strip()
-                if len(clean_name) > 3: potential_names.append(clean_name)
-
-    unique_names = list(dict.fromkeys(potential_names))
-    t_home = unique_names[1] if len(unique_names) > 1 else "Home Team"
-    t_away = unique_names[0] if len(unique_names) > 0 else "Away Team"
-    
-    # B. Detect Set Scores
-    scores = []
-    duration_pattern = re.compile(r"(\d{1,3})\s*['’′`]")
-    found_table = False
-    
-    for line in lines:
-        if "RESULTATS" in line: found_table = True
-        if "Vainqueur" in line: found_table = False
+    # Le format des substitutions est: {score_merignac: {score_lescar: [(entré, sorti), ...]}}
+    if merignac_score in subs_data and lescar_score in subs_data[merignac_score]:
+        substitutions = subs_data[merignac_score][lescar_score]
         
-        if found_table:
-            match = duration_pattern.search(line)
-            if match:
-                duration_val = int(match.group(1))
-                if duration_val < 60: # Filter out Total Duration
-                    parts = line.split(match.group(0))
-                    if len(parts) >= 2:
-                        left = re.findall(r'\d+', parts[0])
-                        right = re.findall(r'\d+', parts[1])
-                        if len(left) >= 2 and len(right) >= 1:
-                            try:
-                                scores.append({"Home": int(left[-2]), "Away": int(right[0]), "Duration": duration_val})
-                            except: pass
-    return t_home, t_away, scores
-
-class VolleySheetExtractor:
-    def __init__(self, pdf_file):
-        self.pdf_file = pdf_file
-
-    def extract_full_match(self, base_x, base_y, w, h, offset_x, offset_y, p_height):
-        match_data = []
-        with pdfplumber.open(self.pdf_file) as pdf:
-            page = pdf.pages[0]
-            for set_num in range(1, 6): 
-                current_y = base_y + ((set_num - 1) * offset_y)
-                if current_y + h < p_height:
-                    # Left
-                    row_l = self._extract_row(page, current_y, base_x, w, h)
-                    if row_l: match_data.append({"Set": set_num, "Team": "Home", "Starters": row_l})
-                    # Right
-                    row_r = self._extract_row(page, current_y, base_x + offset_x, w, h)
-                    if row_r: match_data.append({"Set": set_num, "Team": "Away", "Starters": row_r})
-        gc.collect()
-        return match_data
-
-    def _extract_row(self, page, top_y, start_x, w, h):
-        row_data = []
-        for i in range(6):
-            drift = i * 0.3
-            px_x = start_x + (i * w) + drift
-            # Box: +3px width, Top 80% height
-            bbox = (px_x - 3, top_y, px_x + w + 3, top_y + (h * 0.8))
+        for player_in, player_out in substitutions:
             try:
-                text = page.crop(bbox).extract_text()
-                val = "?"
-                if text:
-                    for token in text.split():
-                        clean = re.sub(r'[^0-9]', '', token)
-                        if clean.isdigit() and len(clean) <= 2:
-                            val = clean; break
-                row_data.append(val)
-            except: row_data.append("?")
-        if all(x == "?" for x in row_data): return None
-        return row_data
+                # 1. Trouver l'index de la position du joueur sortant
+                idx_out = updated_positions.index(player_out)
+                
+                # 2. Remplacer le joueur sortant par le joueur entrant
+                updated_positions[idx_out] = player_in
+                
+                # 3. Mettre à jour la chaîne de changement (gère les substitutions multiples)
+                if change_string:
+                    change_string += ", "
+                change_string += f"#{player_in}/#{player_out}"
+                
+            except ValueError:
+                pass
+                
+    return updated_positions, change_string
 
-# ==========================================
-# 2. ANALYTICS (Math) - Déplacé au début
-# ==========================================
-
-def calculate_player_stats(df, scores):
-    """Calculates Win % for starters."""
-    stats = {}
-    set_winners = {i+1: ("Home" if s['Home'] > s['Away'] else "Away") for i, s in enumerate(scores)}
-
-    for _, row in df.iterrows():
-        team = row['Team']
-        set_n = row['Set']
-        if set_n in set_winners:
-            won = (team == set_winners[set_n])
-            for p in row['Starters']:
-                if p.isdigit():
-                    if p not in stats: stats[p] = {'team': team, 'played': 0, 'won': 0}
-                    stats[p]['played'] += 1
-                    if won: stats[p]['won'] += 1
+def analyze_set(set_num, initial_formation, initial_service, substitutions_data, rally_outcomes):
+    """
+    Simule un set rallye par rallye et génère le tableau d'analyse.
+    """
     
-    data = []
-    for p, s in stats.items():
-        pct = (s['won']/s['played'])*100 if s['played'] > 0 else 0
-        data.append({"Player": f"#{p}", "Team": s['team'], "Sets": s['played'], "Win %": round(pct, 1)})
-    
-    if not data: return pd.DataFrame()
-    return pd.DataFrame(data).sort_values(['Team', 'Win %'], ascending=[True, False])
+    lescar_pts = 0
+    merignac_pts = 0
+    service_state = 'S' if initial_service == 'B' else 'R' # 'S' pour Lescar (Serve), 'R' pour Récéption (Mérignac sert)
+    current_positions = list(initial_formation)
+    results = []
 
-def analyze_money_time(scores, t_home, t_away):
-    """Analyzes close sets."""
-    analysis = []
-    clutch_stats = {t_home: 0, t_away: 0}
-    
-    for i, s in enumerate(scores):
-        diff = abs(s['Home'] - s['Away'])
-        winner = t_home if s['Home'] > s['Away'] else t_away
+    # En-têtes du tableau
+    header = ['Rallye', 'Merignac pts', 'Lescar pts', 'Score L', 'Score M', 
+              'Pos I (RD)', 'Pos II (AD)', 'Pos III (AC)', 'Pos IV (AG)', 
+              'Pos V (AR)', 'Pos VI (RC)', 'Service', 'Gagnant', 'Changement']
+
+    # Ligne de départ (score 0-0)
+    start_row = [
+        0, '', '', 0, 0, # Scores
+        *current_positions, # Positions I à VI
+        service_state, 'Début', '' # S/R, Success, Changement
+    ]
+    results.append(start_row)
+
+    # Simulation des rallyes
+    for rally_idx, rally_outcome in enumerate(rally_outcomes):
+        rally_num = rally_idx + 1
         
-        if max(s['Home'], s['Away']) >= 20 and diff <= 3:
-            clutch_stats[winner] += 1
-            analysis.append(f"✅ Set {i+1} ({s['Home']}-{s['Away']}) : Won by **{winner}** (Clutch).")
-        elif diff > 5:
-            analysis.append(f"⚠️ Set {i+1} ({s['Home']}-{s['Away']}) : Comfortable win for {winner}.")
-        else:
-            analysis.append(f"ℹ️ Set {i+1} ({s['Home']}-{s['Away']}) : Standard win for {winner}.")
+        # 1. LOGIQUE DE ROTATION : Lescar tourne SEULEMENT si R -> S
+        should_rotate = (service_state == 'R' and rally_outcome == 1)
+        if should_rotate:
+            current_positions = rotate_positions(current_positions)
+        
+        prev_service_state = service_state
+        current_change_string = ""
+        
+        if rally_outcome == 1: # Lescar gagne le rallye
+            lescar_pts += 1
+            if prev_service_state == 'R':
+                service_state = 'S' # Changement de service: R -> S (Lescar prend le service)
             
-    return analysis, clutch_stats
+            # Application des substitutions
+            current_positions, current_change_string = apply_substitutions(
+                current_positions, lescar_pts, merignac_pts, substitutions_data
+            )
+            
+        else: # Mérignac gagne le rallye (rally_outcome == 0)
+            merignac_pts += 1
+            if prev_service_state == 'S':
+                service_state = 'R' # Changement de service: S -> R (Mérignac prend le service)
+            
+            # Application des substitutions (même si c'est le score adverse qui a bougé)
+            current_positions, current_change_string = apply_substitutions(
+                current_positions, lescar_pts, merignac_pts, substitutions_data
+            )
+        
+        # 2. Enregistrement de la ligne de résultat
+        new_row = [
+            rally_num,
+            merignac_pts if rally_outcome == 0 else '',
+            lescar_pts if rally_outcome == 1 else '', 
+            lescar_pts, 
+            merignac_pts,
+            *current_positions,
+            service_state, 
+            'Lescar' if rally_outcome == 1 else 'Mérignac', 
+            current_change_string
+        ]
+        results.append(new_row)
+        
+        # 3. Condition d'arrêt du set
+        if (lescar_pts >= 25 and lescar_pts - merignac_pts >= 2) or \
+           (merignac_pts >= 25 and merignac_pts - lescar_pts >= 2) or \
+           (set_num == 5 and (lescar_pts >= 15 or merignac_pts >= 15) and abs(lescar_pts - merignac_pts) >= 2):
+            break
+            
+    return header, results
 
-# ==========================================
-# 3. VISUALS (Drawings) - Déplacé au début
-# ==========================================
+def generate_volleyball_analysis():
+    """
+    Fonction principale pour exécuter l'analyse de tous les sets et créer le DataFrame final.
+    """
+    game_data = {
+        1: {
+            'initial_formation': [5, 15, 9, 8, 7, 23], # Positions I à VI
+            'initial_service': 'B', # Lescar sert au début
+            'substitutions': {3: {4: [(4, 23)]}, 14: {15: [(3, 5)]}},
+            'rally_outcomes': [1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1]  
+        },
+        2: {
+            'initial_formation': [7, 5, 15, 6, 9, 8],
+            'initial_service': 'B',
+            'substitutions': {8: {9: [(10, 6)]}, 19: {20: [(4, 7)]}},
+            'rally_outcomes': [1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1]
+        },
+        3: {
+            'initial_formation': [4, 14, 15, 9, 8, 7],
+            'initial_service': 'R', # Mérignac sert au début
+            'substitutions': {12: {15: [(5, 4)]}, 22: {23: [(3, 15)]}},
+            'rally_outcomes': [1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0]
+        },
+        4: {
+            'initial_formation': [6, 1, 15, 9, 8, 7],
+            'initial_service': 'B',
+            'substitutions': {15: {16: [(3, 6)]}},
+            'rally_outcomes': [1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1]
+        },
+        5: {
+            'initial_formation': [6, 1, 15, 9, 8, 7],
+            'initial_service': 'B',
+            'substitutions': {}, 
+            'rally_outcomes': [1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1]
+        }
+    }
 
-def draw_court_view(starters):
-    safe = [s if s != "?" else "-" for s in starters]
-    while len(safe) < 6: safe.append("-")
-    # Grid: Front(4,3,2) Back(5,6,1)
-    # L'ordre dans Starters est généralement la rotation 1-6 (Z1 à Z6).
-    # Z1 (Start/Serve) est arrière droit. Z6 est arrière centre.
-    # Pour l'affichage sur le terrain (Front Row: 4, 3, 2 | Back Row: 5, 6, 1)
-    grid = [[safe[3], safe[2], safe[1]], [safe[4], safe[5], safe[0]]]
+    all_results = []
     
-    fig = px.imshow(grid, text_auto=True, color_continuous_scale='Blues',
-                      x=['Left', 'Center', 'Right'], y=['Front Row', 'Back Row'])
-    fig.update_layout(coloraxis_showscale=False, height=300, margin=dict(l=10, r=10, t=10, b=10))
-    fig.update_traces(textfont_size=24)
-    return fig
-
-def draw_grid(base_img, bx, by, w, h, off_x, off_y):
-    img = base_img.copy()
-    draw = ImageDraw.Draw(img)
-    for s in range(4):
-        y = by + (s * off_y)
-        for i in range(6):
-            d = i * 0.3
-            draw.rectangle([bx+(i*w)+d, y, bx+(i*w)+d+w, y+h], outline="red", width=2)
-            draw.rectangle([bx+off_x+(i*w)+d, y, bx+off_x+(i*w)+d+w, y+h], outline="blue", width=2)
-    return img
+    for set_num, data in game_data.items():
+        header, results = analyze_set(
+            set_num, 
+            data['initial_formation'], 
+            data['initial_service'],
+            data['substitutions'], 
+            data['rally_outcomes']
+        )
+        # Ajouter le numéro de Set à chaque ligne pour l'exportation
+        for row in results:
+            row.insert(0, set_num) 
+        
+        all_results.extend(results)
+    
+    # Créer le DataFrame final
+    final_header = ['Set'] + header
+    df = pd.DataFrame(all_results, columns=final_header)
+    return df, final_header
 
 # ==========================================
-# 4. MAIN APP - Reste à la fin
+# 2. MAIN APP STREAMLIT (Interface)
 # ==========================================
 
 def main():
-    st.title("🏐 VolleyStats Pro")
+    st.title("📊 Analyse Détaillée des Rotations et Substitutions")
+    st.markdown("---")
 
-    with st.sidebar:
-        uploaded_file = st.file_uploader("Upload PDF", type="pdf")
-        with st.expander("⚙️ Calibration"):
-            base_x = st.number_input("X Start", 123); base_y = st.number_input("Y Start", 88)
-            w = st.number_input("Width", 23); h = st.number_input("Height", 20)
-            off_x = st.number_input("Right Offset", 492)
-            off_y = st.number_input("Down Offset", 151)
+    # Générer le tableau de données
+    df_analysis, _ = generate_volleyball_analysis()
 
-    if not uploaded_file:
-        st.info("Please upload a file.")
-        return
-
-    # Ces fonctions et classes sont maintenant définies au-dessus de main()
-    extractor = VolleySheetExtractor(uploaded_file)
-    t_home, t_away, scores = extract_match_info(uploaded_file)
+    st.subheader("Simulations des Rotations et Substitutions (Lescar)")
+    st.info("**Explications :**\n\n- **Pos I à VI :** Numéro de joueur dans la position de rotation (I est le serveur).\n- **Service :** **S** (Lescar sert) ou **R** (Mérignac sert/Lescar reçoit).\n- **Changement :** Substitution effectuée au score du rallye (Entrant/Sortant).")
     
-    with st.spinner("Extracting Data..."):
-        # La hauteur de page (842) est une valeur courante pour un PDF A4
-        lineups = extractor.extract_full_match(base_x, base_y, w, h, off_x, off_y, 842) 
-        df = pd.DataFrame(lineups) 
+    # Affichage du tableau
+    st.dataframe(df_analysis, use_container_width=True)
 
-    if df.empty:
-        st.error("Extraction failed. Check PDF.")
-        return
+    st.markdown("---")
 
-    # --- Préparation du tableau de données complet (pour les onglets 5 et 6) ---
-    export = df.copy()
-    cols = pd.DataFrame(export['Starters'].tolist(), columns=[f'Z{i+1}' for i in range(6)])
-    final_df_table = pd.concat([export[['Set', 'Team']], cols], axis=1)
-    
-    # Scoreboard 
-    h_wins = sum(1 for s in scores if s['Home'] > s['Away'])
-    a_wins = sum(1 for s in scores if s['Away'] > s['Home'])
-    
-    c1, c2, c3 = st.columns([2, 1, 2])
-    c1.metric("HOME", t_home)
-    c3.metric("AWAY", t_away)
-    c2.markdown(f"<h1 style='text-align: center; color: #FF4B4B;'>{h_wins} - {a_wins}</h1>", unsafe_allow_html=True)
+    # Conversion du DataFrame en CSV pour le bouton de téléchargement
+    csv_file = df_analysis.to_csv(index=False).encode('utf-8')
 
-    # Analytics Tabs 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["1. Money Time", "2. Players", "3. Rotations", "4. Duration", "5. Data Table", "6. Export"])
-
-    with tab1:
-        if scores:
-            analysis, clutch = analyze_money_time(scores, t_home, t_away)
-            c_mt1, c_mt2 = st.columns(2)
-            c_mt1.metric(f"Clutch Wins ({t_home})", clutch.get(t_home, 0))
-            c_mt2.metric(f"Clutch Wins ({t_away})", clutch.get(t_away, 0))
-            for item in analysis: st.write(item)
-        else: st.warning("No score data found.")
-
-    with tab2:
-        if scores:
-            stats = calculate_player_stats(df, scores)
-            if not stats.empty:
-                ca, cb = st.columns(2)
-                with ca: st.dataframe(stats[stats['Team']=="Home"], use_container_width=True)
-                with cb: st.dataframe(stats[stats['Team']=="Away"], use_container_width=True)
-
-    with tab3:
-        c_s, c_t = st.columns(2)
-        sel_set = c_s.selectbox("Set", df['Set'].unique())
-        sel_team = c_t.selectbox("Team", ["Home", "Away"])
-        row = df[(df['Set'] == sel_set) & (df['Team'] == sel_team)]
-        if not row.empty:
-            st.plotly_chart(draw_court_view(row.iloc[0]['Starters']), use_container_width=False)
-            
-
-    with tab4:
-        if scores:
-            durations = [s['Duration'] for s in scores if 'Duration' in s]
-            if durations:
-                st.metric("Total Duration", f"{sum(durations)} min")
-                st.bar_chart(pd.DataFrame({"Set": range(1, len(durations)+1), "Minutes": durations}).set_index("Set"))
-
-    with tab5: 
-        st.subheader("📊 Rotations des Joueurs par Set et par Équipe")
-        st.markdown("**Z1** correspond à la position arrière droit (serveur), **Z6** est la position arrière central.")
-        st.dataframe(
-            final_df_table, 
-            use_container_width=True,
-            column_order=('Set', 'Team', 'Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6') 
-        )
-
-    with tab6: 
-        try:
-            f_bytes = uploaded_file.getvalue()
-            img, _ = get_page_image(f_bytes)
-            st.image(draw_grid(img, base_x, base_y, w, h, off_x, off_y))
-            st.caption("Visualisation des zones d'extraction du PDF (Rouge=Home, Bleu=Away).")
-        except: pass
-        
-        st.download_button(
-            "Download CSV", 
-            final_df_table.to_csv(index=False).encode('utf-8'), 
-            "match_rotations.csv", 
-            "text/csv"
-        )
+    st.download_button(
+        label="⬇️ Télécharger le Tableau d'Analyse (CSV)",
+        data=csv_file,
+        file_name='analyse_rotations_volleyball.csv',
+        mime='text/csv',
+    )
 
 if __name__ == "__main__":
     main()
