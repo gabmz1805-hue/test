@@ -1,16 +1,16 @@
 import streamlit as st
 import pandas as pd
-import io
+# Aucune autre importation de librairies comme pdfplumber, pypdfium2 n'est nécessaire
 
 st.set_page_config(page_title="VolleyStats Rotations", page_icon="📊", layout="wide")
 
 # ==========================================
-# 1. LOGIQUE DE ROTATION ET DE SUBSTITUTION (Vos fonctions - Aucune modification)
+# 1. LOGIQUE DE ROTATION ET DE SUBSTITUTION
 # ==========================================
 
 def rotate_positions(positions):
     """
-    Effectue une rotation horaire des joueurs pour l'équipe (Lescar dans cet exemple).
+    Effectue une rotation horaire des joueurs pour l'équipe (Lescar).
     [I, II, III, IV, V, VI] -> [VI, I, II, III, IV, V] (sens horaire)
     """
     return positions[-1:] + positions[:-1]
@@ -28,13 +28,9 @@ def apply_substitutions(positions, lescar_score, merignac_score, subs_data):
         
         for player_in, player_out in substitutions:
             try:
-                # 1. Trouver l'index de la position du joueur sortant
                 idx_out = updated_positions.index(player_out)
-                
-                # 2. Remplacer le joueur sortant par le joueur entrant
                 updated_positions[idx_out] = player_in
                 
-                # 3. Mettre à jour la chaîne de changement (gère les substitutions multiples)
                 if change_string:
                     change_string += ", "
                 change_string += f"#{player_in}/#{player_out}"
@@ -56,7 +52,7 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
     results = []
 
     # En-têtes du tableau
-    header = ['Rallye', 'Merignac pts', 'Lescar pts', 'Score L', 'Score M', 
+    header = ['Rallye', 'Mérignac pts', 'Lescar pts', 'Score L', 'Score M', 
               'Pos I (RD)', 'Pos II (AD)', 'Pos III (AC)', 'Pos IV (AG)', 
               'Pos V (AR)', 'Pos VI (RC)', 'Service', 'Gagnant', 'Changement']
 
@@ -186,7 +182,7 @@ def generate_volleyball_analysis():
     return df_by_set, df_global
 
 # ==========================================
-# 2. MAIN APP STREAMLIT (Interface) - Modifiée pour boucler
+# 2. MAIN APP STREAMLIT (Interface)
 # ==========================================
 
 def main():
@@ -197,13 +193,19 @@ def main():
     df_by_set, df_global = generate_volleyball_analysis()
 
     st.subheader("Simulations des Rotations et Substitutions (Lescar)")
-    st.info("**Explications :**\n\n- **Pos I à VI :** Numéro de joueur dans la position de rotation (I est le serveur). 
+    # CORRECTION DE L'ERREUR DE SYNTAXE (string literal)
+    st.info(
+        "**Explications :**\n\n"
+        "- **Pos I à VI :** Numéro de joueur dans la position de rotation (I est le serveur). 
 
 [Image of volleyball rotation diagram]
-\n- **Service :** **S** (Lescar sert) ou **R** (Mérignac sert/Lescar reçoit).\n- **Changement :** Substitution effectuée au score du rallye (Entrant/Sortant).")
+\n"
+        "- **Service :** **S** (Lescar sert) ou **R** (Mérignac sert/Lescar reçoit).\n"
+        "- **Changement :** Substitution effectuée au score du rallye (Entrant/Sortant)."
+    )
     
     # --- Affichage d'un tableau pour chaque Set ---
-    set_keys = list(df_by_set.keys())
+    set_keys = sorted(list(df_by_set.keys())) # Tri pour être sûr de l'ordre
     
     for set_num in set_keys:
         st.header(f"Set {set_num}")
