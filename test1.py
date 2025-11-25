@@ -180,6 +180,7 @@ def generate_volleyball_analysis():
     df_global = pd.DataFrame(all_results_global, columns=global_header)
     
     return df_by_set, df_global
+# ... (Code précédent inchangé)
 
 # ==========================================
 # 2. MAIN APP STREAMLIT (Interface)
@@ -189,33 +190,31 @@ def main():
     st.title("📊 Analyse Détaillée des Rotations et Substitutions")
     st.markdown("---")
 
-    # Générer les tableaux de données
     df_by_set, df_global = generate_volleyball_analysis()
 
     st.subheader("Simulations des Rotations et Substitutions (Lescar)")
-    # CORRECTION DE L'ERREUR DE SYNTAXE (string literal)
+    
+    # Correction de la chaîne de caractères avec les triples guillemets
     st.info(
-        "**Explications :**\n\n"
-        "- **Pos I à VI :** Numéro de joueur dans la position de rotation (I est le serveur). 
+"""
+**Explications :**
 
-[Image of volleyball rotation diagram]
-\n"
-        "- **Service :** **S** (Lescar sert) ou **R** (Mérignac sert/Lescar reçoit).\n"
-        "- **Changement :** Substitution effectuée au score du rallye (Entrant/Sortant)."
+- **Pos I à VI :** Numéro de joueur dans la position de rotation (I est le serveur). - **Service :** **S** (Lescar sert) ou **R** (Mérignac sert/Lescar reçoit).
+- **Changement :** Substitution effectuée au score du rallye (Entrant/Sortant).
+"""
     )
     
     # --- Affichage d'un tableau pour chaque Set ---
-    set_keys = sorted(list(df_by_set.keys())) # Tri pour être sûr de l'ordre
+    set_keys = sorted(list(df_by_set.keys()))
     
     for set_num in set_keys:
         st.header(f"Set {set_num}")
         st.dataframe(df_by_set[set_num], use_container_width=True)
-        st.markdown("---") # Séparateur entre les sets
+        st.markdown("---") 
 
     # --- Bouton de téléchargement (utilise le DataFrame global) ---
     st.header("Téléchargement")
 
-    # Conversion du DataFrame global en CSV pour le bouton de téléchargement
     csv_file = df_global.to_csv(index=False).encode('utf-8')
 
     st.download_button(
