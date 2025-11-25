@@ -1,3 +1,14 @@
+import streamlit as st
+import pdfplumber
+import pandas as pd
+import pypdfium2 as pdfium
+import re
+import gc
+import plotly.express as px
+import plotly.graph_objects as go
+from PIL import Image, ImageDraw
+
+st.set_page_config(page_title="VolleyStats Pro", page_icon="🏐", layout="wide")
 # ==========================================
 # 4. MAIN APP
 # (Section modifiée pour ajouter le nouvel onglet)
