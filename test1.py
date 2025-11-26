@@ -11,6 +11,9 @@ import os
 
 st.set_page_config(page_title="VolleyStats Rotations", page_icon="📊", layout="wide")
 
+# Définition de l'équipe analysée que nous recherchons
+TEAM_TO_ANALYZE = "LESCAR"
+
 # ==========================================
 # 0. DATA SOURCE (Les données de rotation codées en dur - CONSERVEES)
 # ==========================================
@@ -20,7 +23,7 @@ def get_game_data():
     return {
         1: {
             'initial_formation': [5, 15, 9, 8, 7, 23],  
-            'initial_service': 'B',
+            'initial_service': 'B', # B = Home Logique (l'équipe analysée, Lescar)
             'substitutions': {3: {4: [(4, 23)]}, 14: {15: [(3, 5)]}},
             'rally_outcomes': [1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1]  
         },
@@ -32,7 +35,7 @@ def get_game_data():
         },
         3: {
             'initial_formation': [4, 14, 15, 9, 8, 7],
-            'initial_service': 'R',  
+            'initial_service': 'R',  # R = Away Logique (l'équipe adverse)
             'substitutions': {12: {15: [(5, 4)]}, 22: {23: [(3, 15)]}},
             'rally_outcomes': [1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0]
         },
@@ -51,21 +54,18 @@ def get_game_data():
     }
 
 # ==========================================
-# 1. LOGIQUE DE ROTATION ET ANALYSE (Non modifiée)
+# 1. LOGIQUE DE ROTATION ET ANALYSE (Utilise t_home=t_analysed et t_away=t_adverse)
 # ==========================================
-# ... (Les fonctions rotate_positions, apply_substitutions, analyze_set, generate_volleyball_analysis restent inchangées)
-# [Elles sont définies ici dans le code réel]
+
 def rotate_positions(positions):
-    """Effectue une rotation horaire des joueurs."""
     return positions[-1:] + positions[:-1]
 
-def apply_substitutions(positions, lescar_score, merignac_score, subs_data):
-    """Applique les substitutions de joueurs."""
+def apply_substitutions(positions, home_score, away_score, subs_data):
     change_string = ""
     updated_positions = list(positions)
     
-    if merignac_score in subs_data and lescar_score in subs_data[merignac_score]:
-        substitutions = subs_data[merignac_score][lescar_score]
+    if away_score in subs_data and home_score in subs_data[away_score]:
+        substitutions = subs_data[away_score][home_score]
         
         for player_in, player_out in substitutions:
             try:
@@ -81,18 +81,26 @@ def apply_substitutions(positions, lescar_score, merignac_score, subs_data):
                 
     return updated_positions, change_string
 
-def analyze_set(set_num, initial_formation, initial_service, substitutions_data, rally_outcomes):
+def analyze_set(set_num, initial_formation, initial_service, substitutions_data, rally_outcomes, t_home, t_away):
     """Simule un set rallye par rallye et génère le tableau d'analyse."""
     
-    lescar_pts = 0
-    merignac_pts = 0
+    home_pts = 0 # Points de l'équipe analysée
+    away_pts = 0 # Points de l'équipe adverse
     service_state = 'S' if initial_service == 'B' else 'R'  
     current_positions = list(initial_formation)
     results = []
 
-    header = ['Rallye', 'Mérignac pts', 'Lescar pts', 'Score L', 'Score M', 
-              'Pos I (RD)', 'Pos II (AD)', 'Pos III (AC)', 'Pos IV (AG)', 
-              'Pos V (AR)', 'Pos VI (RC)', 'Service', 'Gagnant', 'Changement']
+    # Les en-têtes utilisent les noms d'équipes dynamiques
+    header = [
+        'Rallye', 
+        f'{t_away} pts',    
+        f'{t_home} pts',    
+        f'Score {t_home[0]}', 
+        f'Score {t_away[0]}', 
+        'Pos I (RD)', 'Pos II (AD)', 'Pos III (AC)', 'Pos IV (AG)', 
+        'Pos V (AR)', 'Pos VI (RC)', 
+        'Service', 'Gagnant', 'Changement'
+    ]
 
     start_row = [0, '', '', 0, 0, *current_positions, service_state, 'Début', '']
     results.append(start_row)
@@ -100,6 +108,7 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
     for rally_idx, rally_outcome in enumerate(rally_outcomes):
         rally_num = rally_idx + 1
         
+        # Rotation se produit uniquement si Home (équipe analysée) gagne le rallye ALORS qu'elle était en réception (R)
         should_rotate = (service_state == 'R' and rally_outcome == 1)
         if should_rotate:
             current_positions = rotate_positions(current_positions)
@@ -107,42 +116,45 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
         prev_service_state = service_state
         current_change_string = ""
         
-        if rally_outcome == 1:  # Lescar (joueur B) gagne
-            lescar_pts += 1
+        if rally_outcome == 1:  # Home (équipe analysée) gagne le rallye
+            home_pts += 1
             if prev_service_state == 'R': 
                 service_state = 'S' 
             current_positions, current_change_string = apply_substitutions(
-                current_positions, lescar_pts, merignac_pts, substitutions_data
+                current_positions, home_pts, away_pts, substitutions_data
             )
-        else:  # Mérignac (joueur A) gagne
-            merignac_pts += 1
+            winner_name = t_home
+        else:  # Away (équipe adverse) gagne le rallye
+            away_pts += 1
             if prev_service_state == 'S': 
                 service_state = 'R' 
             current_positions, current_change_string = apply_substitutions(
-                current_positions, lescar_pts, merignac_pts, substitutions_data
+                current_positions, home_pts, away_pts, substitutions_data
             )
+            winner_name = t_away
         
         new_row = [
             rally_num,
-            merignac_pts if rally_outcome == 0 else '',
-            lescar_pts if rally_outcome == 1 else '',  
-            lescar_pts,  
-            merignac_pts,
+            away_pts if rally_outcome == 0 else '',
+            home_pts if rally_outcome == 1 else '',  
+            home_pts,  
+            away_pts,
             *current_positions,
             service_state,  
-            'Lescar' if rally_outcome == 1 else 'Mérignac',  
+            winner_name,  
             current_change_string
         ]
         results.append(new_row)
         
-        if (lescar_pts >= 25 and lescar_pts - merignac_pts >= 2) or \
-           (merignac_pts >= 25 and merignac_pts - lescar_pts >= 2) or \
-           (set_num == 5 and (lescar_pts >= 15 or merignac_pts >= 15) and abs(lescar_pts - merignac_pts) >= 2):
+        # Vérification de la fin du set
+        if (home_pts >= 25 and home_pts - away_pts >= 2) or \
+           (away_pts >= 25 and away_pts - home_pts >= 2) or \
+           (set_num == 5 and (home_pts >= 15 or away_pts >= 15) and abs(home_pts - away_pts) >= 2):
             break
             
     return header, results
 
-def generate_volleyball_analysis():
+def generate_volleyball_analysis(t_home, t_away):
     """Simule tous les sets et retourne les DataFrames d'analyse des rotations."""
     game_data = get_game_data()
 
@@ -155,7 +167,9 @@ def generate_volleyball_analysis():
             data['initial_formation'],  
             data['initial_service'],
             data['substitutions'],  
-            data['rally_outcomes']
+            data['rally_outcomes'],
+            t_home, # L'équipe analysée est passée en t_home logique
+            t_away # L'équipe adverse est passée en t_away logique
         )
         
         df_set = pd.DataFrame(results, columns=header)
@@ -175,8 +189,12 @@ def generate_volleyball_analysis():
 # ==========================================
 
 def extract_match_info(file):
-    """Extracts Team Names and Set Scores."""
-    t_home, t_away, scores = "Équipe Domicile", "Équipe Extérieure", []
+    """
+    Extracts Team Names and Set Scores.
+    Returns: t_home (PDF Home Name), t_away (PDF Away Name), scores
+    """
+    # Utilisation de TEAM_TO_ANALYZE pour initialiser t_home si l'extraction échoue
+    t_home, t_away, scores = TEAM_TO_ANALYZE, "ADVERSAIRE INCONNU", [] 
     
     try:
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
@@ -194,78 +212,99 @@ def extract_match_info(file):
         
     lines = text.split('\n')
     
-    # A. Detect Team Names
     potential_names = []
     for line in lines:
         if "Début:" in line:
               parts = re.split(r'Début:.*?(Fin:.*?)', line)
               for part in parts:
+                  # Nettoyage et capitalisation pour faciliter la recherche (Lescar vs LESCAR)
                   clean_name = re.sub(r'[^A-Z\s]+', '', part).strip()
                   if len(clean_name) > 3: potential_names.append(clean_name)
                   
     unique_names = list(dict.fromkeys(potential_names))
-    if len(unique_names) > 1:
-        t_home = unique_names[1]
-        t_away = unique_names[0]
+    
+    # Si deux noms sont trouvés, on les retourne (le mapping Home/Away du PDF n'a plus d'importance ici)
+    if len(unique_names) >= 2:
+        return unique_names[1], unique_names[0], scores # Retourne les deux noms extraits (PDF Domicile, PDF Extérieur)
+    elif len(unique_names) == 1:
+        # Si un seul nom est trouvé, c'est peut-être Lescar, l'autre reste inconnu
+        if unique_names[0] == TEAM_TO_ANALYZE:
+             return unique_names[0], "ADVERSAIRE INCONNU", scores
+        else:
+            return TEAM_TO_ANALYZE, unique_names[0], scores
 
-    return t_home, t_away, scores
+    return TEAM_TO_ANALYZE, "ADVERSAIRE INCONNU", scores
 
 # ==========================================
-# 3. MAIN APP STREAMLIT (Interface conditionnelle)
+# 3. MAIN APP STREAMLIT (Identification automatique de Lescar)
 # ==========================================
 
 def main():
     st.title("📊 Analyse Détaillée des Rotations et Substitutions")
     st.markdown("---")
     
-    # Définition des valeurs par défaut pour l'accueil
-    t_home = "Lescar"
-    t_away = "Mérignac"
-    scores = []
-    uploaded_file = None
-    
-    # --- Affichage du sélecteur de fichier dans la colonne principale (ou sidebar) ---
+    # --- Affichage du sélecteur de fichier ---
     st.subheader("Importez votre Feuille de Match (PDF) pour lancer l'analyse")
-    
-    # Utilisation d'un conteneur pour centrer ou styliser l'uploader si désiré
     uploaded_file = st.file_uploader("Upload PDF de Feuille de Match", type="pdf", label_visibility="collapsed")
-    
     st.markdown("---")
-
-    # --- CONTENU CONDITIONNEL : AFFICHÉ SEULEMENT APRÈS L'UPLOAD ---
+    
+    # --- DÉCLENCHEUR ---
     if uploaded_file:
         
-        # 1. Extraction (pour les noms et scores)
-        with st.spinner("Lecture du PDF pour les noms d'équipe et initialisation de l'analyse..."):
-            t_home, t_away, scores = extract_match_info(uploaded_file)
+        # 1. Extraction des noms depuis le PDF (récupère les noms du PDF sans se soucier du statut Domicile/Extérieur)
+        with st.spinner("Lecture du PDF pour les noms d'équipe..."):
+            name1, name2, scores = extract_match_info(uploaded_file)
             
-        # 2. Scoreboard (Utilise les noms extraits ou par défaut)
+        # --- LOGIQUE D'IDENTIFICATION DE LESCAR ---
+        
+        # Vérifie quel nom est Lescar pour définir t_analysed et t_adverse
+        
+        # On compare les noms trouvés (name1 et name2) avec l'équipe que nous voulons analyser (TEAM_TO_ANALYZE)
+        if name1 == TEAM_TO_ANALYZE:
+            t_analysed = name1
+            t_adverse = name2
+        elif name2 == TEAM_TO_ANALYZE:
+            t_analysed = name2
+            t_adverse = name1
+        else:
+            # Si "Lescar" n'est pas trouvé (erreur dans le PDF ou nom différent)
+            st.error(
+                f"🚨 **Erreur d'identification :** L'équipe '{TEAM_TO_ANALYZE}' n'a pas été trouvée dans le PDF. "
+                f"Vérifiez le PDF ou mettez à jour la constante `TEAM_TO_ANALYZE` dans le code."
+            )
+            return 
+        
+        # --- FIN DE LA LOGIQUE D'IDENTIFICATION ---
+        
+        # 2. Scoreboard (Utilise les noms définis)
+        # Note : Le calcul h_wins/a_wins est basé sur le mapping du PDF, ce qui peut être incorrect 
+        # si le PDF ne contient pas de données de score. On simplifie en affichant les noms.
         h_wins = sum(1 for s in scores if isinstance(s, dict) and s.get('Home', 0) > s.get('Away', 0))
         a_wins = sum(1 for s in scores if isinstance(s, dict) and s.get('Away', 0) > s.get('Home', 0))
         
         c1, c2, c3 = st.columns([2, 1, 2])
-        c1.metric(t_home, h_wins)
-        c3.metric(t_away, a_wins)
+        c1.metric(t_analysed, h_wins)
+        c3.metric(t_adverse, a_wins)
         c2.markdown(f"<h1 style='text-align: center; color: #FF4B4B;'>{h_wins} - {a_wins}</h1>", unsafe_allow_html=True)
         st.markdown("---")
 
-        # 3. Génération et affichage des tableaux d'analyse (basés sur les données codées en dur)
-        st.subheader("Résultats de la Simulation des Rotations")
+        # 3. Génération et affichage des tableaux d'analyse
         
-        # Le contenu d'analyse détaillée est généré ici
-        df_by_set, df_global = generate_volleyball_analysis()
+        # L'équipe analysée (Lescar) est toujours t_home logique, l'adversaire est t_away logique
+        df_by_set, df_global = generate_volleyball_analysis(t_analysed, t_adverse)
+        
+        st.subheader(f"Simulations des Rotations et Substitutions ({t_analysed} vs {t_adverse})")
         
         st.info(
-"""
-**Explications :** Cette analyse est basée sur les données de rallye codées en dur, 
-utilisant les formations et substitutions initiales par défaut.
+f"""
+**Explications (Équipe analysée : {t_analysed}) :**
 
-- **Pos I à VI :** Numéro de joueur dans la position de rotation (I est le serveur).
+- **Pos I à VI :** Numéro de joueur dans la position de rotation pour l'équipe {t_analysed} (I est le serveur).
 
 
 [Image of volleyball court positions and rotation]
 
-- **Service :** **S** (L'équipe analysée, Lescar, sert) ou **R** (L'équipe adverse, Mérignac, sert / Lescar reçoit).
+- **Service :** **S** ({t_analysed} sert) ou **R** ({t_adverse} sert / {t_analysed} reçoit).
 - **Changement :** Substitution effectuée au score du rallye (Entrant/Sortant).
 """
         )
@@ -286,13 +325,13 @@ utilisant les formations et substitutions initiales par défaut.
         st.download_button(
             label="⬇️ Télécharger TOUTES les Données d'Analyse (CSV)",
             data=csv_file,
-            file_name='analyse_rotations_volleyball_complete.csv',
+            file_name=f'analyse_rotations_{t_analysed}_vs_{t_adverse}.csv',
             mime='text/csv',
         )
 
     else:
         # Contenu affiché si AUCUN fichier n'est encore uploadé
-        st.info("Veuillez importer un fichier PDF de feuille de match ci-dessus pour déclencher et visualiser l'analyse des rotations.")
+        st.info(f"Veuillez importer un fichier PDF de feuille de match. L'analyse des rotations sera automatiquement focalisée sur l'équipe **{TEAM_TO_ANALYZE}**.")
 
 if __name__ == "__main__":
     main()
