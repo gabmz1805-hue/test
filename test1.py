@@ -1,11 +1,9 @@
 import streamlit as st
 import pandas as pd
-# Bibliothèques nécessaires pour le PDF (assurez-vous qu'elles sont dans requirements.txt)
+# Bibliothèques nécessaires pour le PDF
 import pdfplumber
 import re
 import gc
-# Remarque : pypdfium2, Image, ImageDraw ne sont plus strictement utilisés 
-# dans la logique simplifiée, mais sont conservés pour l'exhaustivité.
 from PIL import Image, ImageDraw 
 import pypdfium2 as pdfium 
 import tempfile
@@ -53,9 +51,10 @@ def get_game_data():
     }
 
 # ==========================================
-# 1. LOGIQUE DE ROTATION ET ANALYSE
+# 1. LOGIQUE DE ROTATION ET ANALYSE (Non modifiée)
 # ==========================================
-
+# ... (Les fonctions rotate_positions, apply_substitutions, analyze_set, generate_volleyball_analysis restent inchangées)
+# [Elles sont définies ici dans le code réel]
 def rotate_positions(positions):
     """Effectue une rotation horaire des joueurs."""
     return positions[-1:] + positions[:-1]
@@ -136,7 +135,6 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
         ]
         results.append(new_row)
         
-        # Vérification de la fin du set
         if (lescar_pts >= 25 and lescar_pts - merignac_pts >= 2) or \
            (merignac_pts >= 25 and merignac_pts - lescar_pts >= 2) or \
            (set_num == 5 and (lescar_pts >= 15 or merignac_pts >= 15) and abs(lescar_pts - merignac_pts) >= 2):
@@ -180,7 +178,6 @@ def extract_match_info(file):
     """Extracts Team Names and Set Scores."""
     t_home, t_away, scores = "Équipe Domicile", "Équipe Extérieure", []
     
-    # Écriture dans un fichier temporaire pour pdfplumber
     try:
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
             tmp_file.write(file.getvalue())
@@ -189,7 +186,6 @@ def extract_match_info(file):
         with pdfplumber.open(tmp_path) as pdf:
             text = pdf.pages[0].extract_text()
         
-        # Nettoyage
         os.remove(tmp_path)
             
     except Exception as e:
@@ -215,66 +211,54 @@ def extract_match_info(file):
     return t_home, t_away, scores
 
 # ==========================================
-# 3. MAIN APP STREAMLIT (avec section d'accueil)
+# 3. MAIN APP STREAMLIT (Interface conditionnelle)
 # ==========================================
 
 def main():
     st.title("📊 Analyse Détaillée des Rotations et Substitutions")
     st.markdown("---")
     
-    # --- SECTION D'ACCUEIL ---
-    st.header("Bienvenue dans VolleyStats Rotations! 🏐")
-    st.markdown(
-        """
-        Cette application simule les **rotations** et **substitutions** d'un match de volleyball
-        et génère une analyse détaillée des joueurs en poste à chaque rallye.
-
-        Par défaut, les résultats ci-dessous sont basés sur un **jeu de données d'exemple** (Lescar vs Mérignac).
-        
-        Pour analyser votre propre match et mettre à jour les noms des équipes/scores finaux, utilisez
-        l'outil d'importation PDF dans la barre latérale.
-        """
-    )
-    st.markdown("---")
-    # -------------------------
-
+    # Définition des valeurs par défaut pour l'accueil
     t_home = "Lescar"
     t_away = "Mérignac"
     scores = []
+    uploaded_file = None
     
-    # --- Importation PDF dans la Sidebar ---
-    with st.sidebar:
-        uploaded_file = st.file_uploader("Upload PDF de Feuille de Match", type="pdf")
-        st.markdown("---")
-        st.markdown(
-            "**Note :** L'analyse détaillée des rotations ci-dessous utilise des **données de rallye codées en dur**, "
-            "car les informations de rallye et de substitution ne sont pas disponibles dans les PDF de feuille de match usuels."
-        )
-
-    if uploaded_file:
-        # Tente d'extraire les vrais noms/scores si un fichier est chargé
-        with st.spinner("Lecture du PDF pour les noms d'équipe..."):
-            t_home, t_away, scores = extract_match_info(uploaded_file)
-            
-    # --- AFFICHAGE DU SCOREBOARD (Utilise les noms extraits ou par défaut) ---
-    h_wins = sum(1 for s in scores if isinstance(s, dict) and s.get('Home', 0) > s.get('Away', 0))
-    a_wins = sum(1 for s in scores if isinstance(s, dict) and s.get('Away', 0) > s.get('Home', 0))
+    # --- Affichage du sélecteur de fichier dans la colonne principale (ou sidebar) ---
+    st.subheader("Importez votre Feuille de Match (PDF) pour lancer l'analyse")
     
-    c1, c2, c3 = st.columns([2, 1, 2])
-    c1.metric(t_home, h_wins)
-    c3.metric(t_away, a_wins)
-    c2.markdown(f"<h1 style='text-align: center; color: #FF4B4B;'>{h_wins} - {a_wins}</h1>", unsafe_allow_html=True)
+    # Utilisation d'un conteneur pour centrer ou styliser l'uploader si désiré
+    uploaded_file = st.file_uploader("Upload PDF de Feuille de Match", type="pdf", label_visibility="collapsed")
+    
     st.markdown("---")
 
+    # --- CONTENU CONDITIONNEL : AFFICHÉ SEULEMENT APRÈS L'UPLOAD ---
+    if uploaded_file:
+        
+        # 1. Extraction (pour les noms et scores)
+        with st.spinner("Lecture du PDF pour les noms d'équipe et initialisation de l'analyse..."):
+            t_home, t_away, scores = extract_match_info(uploaded_file)
+            
+        # 2. Scoreboard (Utilise les noms extraits ou par défaut)
+        h_wins = sum(1 for s in scores if isinstance(s, dict) and s.get('Home', 0) > s.get('Away', 0))
+        a_wins = sum(1 for s in scores if isinstance(s, dict) and s.get('Away', 0) > s.get('Home', 0))
+        
+        c1, c2, c3 = st.columns([2, 1, 2])
+        c1.metric(t_home, h_wins)
+        c3.metric(t_away, a_wins)
+        c2.markdown(f"<h1 style='text-align: center; color: #FF4B4B;'>{h_wins} - {a_wins}</h1>", unsafe_allow_html=True)
+        st.markdown("---")
 
-    # --- CONTENU D'ANALYSE PRÉFÉRÉ (Rotations par Set) ---
-    df_by_set, df_global = generate_volleyball_analysis()
-
-    st.subheader("Simulations des Rotations et Substitutions")
-    
-    st.info(
+        # 3. Génération et affichage des tableaux d'analyse (basés sur les données codées en dur)
+        st.subheader("Résultats de la Simulation des Rotations")
+        
+        # Le contenu d'analyse détaillée est généré ici
+        df_by_set, df_global = generate_volleyball_analysis()
+        
+        st.info(
 """
-**Explications :**
+**Explications :** Cette analyse est basée sur les données de rallye codées en dur, 
+utilisant les formations et substitutions initiales par défaut.
 
 - **Pos I à VI :** Numéro de joueur dans la position de rotation (I est le serveur).
 
@@ -284,27 +268,31 @@ def main():
 - **Service :** **S** (L'équipe analysée, Lescar, sert) ou **R** (L'équipe adverse, Mérignac, sert / Lescar reçoit).
 - **Changement :** Substitution effectuée au score du rallye (Entrant/Sortant).
 """
-    )
-    
-    # Affichage des tableaux par Set
-    set_keys = sorted(list(df_by_set.keys()))
-    
-    for set_num in set_keys:
-        st.header(f"Set {set_num}")
-        st.dataframe(df_by_set[set_num], use_container_width=True)
-        st.markdown("---")  
+        )
+        
+        # Affichage des tableaux par Set
+        set_keys = sorted(list(df_by_set.keys()))
+        
+        for set_num in set_keys:
+            st.header(f"Set {set_num}")
+            st.dataframe(df_by_set[set_num], use_container_width=True)
+            st.markdown("---")  
 
-    # --- Bouton de téléchargement CSV (Toujours disponible) ---
-    st.header("Téléchargement des Données")
+        # 4. Bouton de téléchargement CSV
+        st.header("Téléchargement des Données")
 
-    csv_file = df_global.to_csv(index=False).encode('utf-8')
+        csv_file = df_global.to_csv(index=False).encode('utf-8')
 
-    st.download_button(
-        label="⬇️ Télécharger TOUTES les Données d'Analyse (CSV)",
-        data=csv_file,
-        file_name='analyse_rotations_volleyball_complete.csv',
-        mime='text/csv',
-    )
+        st.download_button(
+            label="⬇️ Télécharger TOUTES les Données d'Analyse (CSV)",
+            data=csv_file,
+            file_name='analyse_rotations_volleyball_complete.csv',
+            mime='text/csv',
+        )
+
+    else:
+        # Contenu affiché si AUCUN fichier n'est encore uploadé
+        st.info("Veuillez importer un fichier PDF de feuille de match ci-dessus pour déclencher et visualiser l'analyse des rotations.")
 
 if __name__ == "__main__":
     main()
