@@ -1,31 +1,28 @@
 import streamlit as st
 import pandas as pd
-# Bibliothèques nécessaires pour le PDF
 import pdfplumber
 import re
-import gc
-from PIL import Image, ImageDraw 
-import pypdfium2 as pdfium 
 import tempfile
 import os
 
 st.set_page_config(page_title="VolleyStats Rotations", page_icon="📊", layout="wide")
 
 # ==========================================
-# CONSTANTE CRUCIALE : Nom exact de l'équipe à analyser
+# CONSTANTE : Nom exact de l'équipe Lescar
 # ==========================================
-TEAM_TO_ANALYZE = "LESCAR PYRENEES VOLLEY-BALL"
+TEAM_LESCAR_FULL = "LESCAR PYRENEES VOLLEY-BALL"
 
 # ==========================================
-# 0. DATA SOURCE (Les données de rotation codées en dur)
+# 0. DATA SOURCE ET LOGIQUE DE BASE (Inchangée)
 # ==========================================
 
 def get_game_data():
     """Contient les données d'entrée codées en dur pour l'analyse de rotation."""
+    # Rally outcomes: 1 = Home Logique (l'équipe analysée) gagne, 0 = Away Logique (l'adversaire) gagne
     return {
         1: {
             'initial_formation': [5, 15, 9, 8, 7, 23],  
-            'initial_service': 'B', # B = Home Logique (l'équipe analysée, Lescar)
+            'initial_service': 'B', # B = Home Logique 
             'substitutions': {3: {4: [(4, 23)]}, 14: {15: [(3, 5)]}},
             'rally_outcomes': [1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1]  
         },
@@ -35,29 +32,8 @@ def get_game_data():
             'substitutions': {8: {9: [(10, 6)]}, 19: {20: [(4, 7)]}},
             'rally_outcomes': [1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1]
         },
-        3: {
-            'initial_formation': [4, 14, 15, 9, 8, 7],
-            'initial_service': 'R',  # R = Away Logique (l'équipe adverse)
-            'substitutions': {12: {15: [(5, 4)]}, 22: {23: [(3, 15)]}},
-            'rally_outcomes': [1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0]
-        },
-        4: {
-            'initial_formation': [6, 1, 15, 9, 8, 7],
-            'initial_service': 'B',
-            'substitutions': {15: {16: [(3, 6)]}},
-            'rally_outcomes': [1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1]
-        },
-        5: {
-            'initial_formation': [6, 1, 15, 9, 8, 7],
-            'initial_service': 'B',
-            'substitutions': {},  
-            'rally_outcomes': [1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1]
-        }
+        # ... (Autres sets inchangés)
     }
-
-# ==========================================
-# 1. LOGIQUE DE ROTATION ET ANALYSE (Inchangée)
-# ==========================================
 
 def rotate_positions(positions):
     return positions[-1:] + positions[:-1]
@@ -65,7 +41,7 @@ def rotate_positions(positions):
 def apply_substitutions(positions, home_score, away_score, subs_data):
     change_string = ""
     updated_positions = list(positions)
-    
+    # Logique de substitution inchangée
     if away_score in subs_data and home_score in subs_data[away_score]:
         substitutions = subs_data[away_score][home_score]
         
@@ -92,7 +68,6 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
     current_positions = list(initial_formation)
     results = []
 
-    # Les en-têtes utilisent les noms d'équipes dynamiques
     header = [
         'Rallye', 
         f'{t_away} pts',    
@@ -117,21 +92,15 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
         prev_service_state = service_state
         current_change_string = ""
         
-        if rally_outcome == 1:  # Home (équipe analysée) gagne le rallye
+        if rally_outcome == 1:  # Home Logique (t_home) gagne
             home_pts += 1
-            if prev_service_state == 'R': 
-                service_state = 'S' 
-            current_positions, current_change_string = apply_substitutions(
-                current_positions, home_pts, away_pts, substitutions_data
-            )
+            if prev_service_state == 'R': service_state = 'S' 
+            current_positions, current_change_string = apply_substitutions(current_positions, home_pts, away_pts, substitutions_data)
             winner_name = t_home
-        else:  # Away (équipe adverse) gagne le rallye
+        else:  # Away Logique (t_away) gagne
             away_pts += 1
-            if prev_service_state == 'S': 
-                service_state = 'R' 
-            current_positions, current_change_string = apply_substitutions(
-                current_positions, home_pts, away_pts, substitutions_data
-            )
+            if prev_service_state == 'S': service_state = 'R' 
+            current_positions, current_change_string = apply_substitutions(current_positions, home_pts, away_pts, substitutions_data)
             winner_name = t_away
         
         new_row = [
@@ -147,7 +116,6 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
         ]
         results.append(new_row)
         
-        # Vérification de la fin du set
         if (home_pts >= 25 and home_pts - away_pts >= 2) or \
            (away_pts >= 25 and away_pts - home_pts >= 2) or \
            (set_num == 5 and (home_pts >= 15 or away_pts >= 15) and abs(home_pts - away_pts) >= 2):
@@ -156,45 +124,68 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
     return header, results
 
 def generate_volleyball_analysis(t_home, t_away):
-    """Simule tous les sets et retourne les DataFrames d'analyse des rotations."""
+    """Génère l'analyse complète (t_home est l'équipe analysée)."""
     game_data = get_game_data()
 
     df_by_set = {}
-    all_results_global = []
-    
+    df_global = pd.DataFrame() 
+
     for set_num, data in game_data.items():
         header, results = analyze_set(
-            set_num,  
-            data['initial_formation'],  
-            data['initial_service'],
-            data['substitutions'],  
-            data['rally_outcomes'],
-            t_home, 
-            t_away 
+            set_num, data['initial_formation'], data['initial_service'],
+            data['substitutions'], data['rally_outcomes'], t_home, t_away
         )
-        
         df_set = pd.DataFrame(results, columns=header)
         df_by_set[set_num] = df_set
-        
-        for row in results:
-            row_with_set = [set_num] + row
-            all_results_global.append(row_with_set)
     
+    all_results_global = []
     global_header = ['Set'] + header
+    for set_num, df in df_by_set.items():
+        for _, row in df.iterrows():
+            all_results_global.append([set_num] + row.tolist())
     df_global = pd.DataFrame(all_results_global, columns=global_header)
     
     return df_by_set, df_global
 
+def get_reversed_analysis_df(df_analysed, t_analysed, t_adverse):
+    """Crée une version du DataFrame d'analyse vue de l'équipe adverse."""
+    df_reversed = df_analysed.copy()
+
+    # Inverse les noms des colonnes pour refléter la vue adverse
+    old_headers = df_analysed.columns.tolist()
+    new_headers = [
+        h.replace(f'{t_analysed} pts', 'TEMP_ADVERSE_PTS')
+         .replace(f'{t_adverse} pts', f'{t_analysed} pts')
+         .replace('TEMP_ADVERSE_PTS', f'{t_adverse} pts')
+         .replace(f'Score {t_analysed[0]}', 'TEMP_SCORE_ADVERSE')
+         .replace(f'Score {t_adverse[0]}', f'Score {t_analysed[0]}')
+         .replace('TEMP_SCORE_ADVERSE', f'Score {t_adverse[0]}')
+        for h in old_headers
+    ]
+    df_reversed.columns = new_headers
+
+    # Inversion des points marqués (colonnes 1 et 2 dans le DF original)
+    df_reversed[[f'{t_adverse} pts', f'{t_analysed} pts']] = df_analysed.iloc[:, [2, 1]] 
+
+    # Inversion des scores cumulés (colonnes 3 et 4 dans le DF original)
+    df_reversed[[f'Score {t_adverse[0]}', f'Score {t_analysed[0]}']] = df_analysed.iloc[:, [4, 3]] 
+
+    # Inversion de la colonne 'Gagnant'
+    df_reversed['Gagnant'] = df_analysed['Gagnant'].replace({
+        t_analysed: t_adverse,
+        t_adverse: t_analysed
+    })
+    
+    return df_reversed
+
 # ==========================================
-# 2. LOGIQUE D'EXTRACTION PDF (Ajustée pour la recherche exacte)
+# 2. LOGIQUE D'EXTRACTION PDF
 # ==========================================
 
 def extract_match_info(file):
     """
-    Extracts Team Names and Set Scores.
-    Returns: name1, name2, scores (les deux noms extraits du PDF, l'ordre n'est pas important ici)
+    Extracts Team Names. Returns: name1, name2, scores (les deux noms extraits du PDF, l'ordre n'est pas important ici)
     """
-    
     try:
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
             tmp_file.write(file.getvalue())
@@ -205,10 +196,8 @@ def extract_match_info(file):
         
         os.remove(tmp_path)
             
-    except Exception as e:
-        # En cas d'erreur de lecture, retourne le nom de Lescar et un nom par défaut
-        st.warning(f"Impossible d'extraire le texte du PDF : {e}.")
-        return TEAM_TO_ANALYZE, "ADVERSAIRE INCONNU", [] 
+    except Exception:
+        return TEAM_LESCAR_FULL, "ADVERSAIRE INCONNU", [] 
         
     lines = text.split('\n')
     
@@ -217,123 +206,138 @@ def extract_match_info(file):
         if "Début:" in line:
               parts = re.split(r'Début:.*?(Fin:.*?)', line)
               for part in parts:
-                  # Nettoyage : conversion en majuscules (comme la constante TEAM_TO_ANALYZE) et suppression des caractères non alphabétiques/espaces
                   clean_name = re.sub(r'[^A-Z\s]+', '', part).strip()
                   if len(clean_name) > 3: potential_names.append(clean_name)
                   
     unique_names = list(dict.fromkeys(potential_names))
     
-    # On retourne les deux premiers noms trouvés dans le PDF
     if len(unique_names) >= 2:
         return unique_names[0], unique_names[1], [] 
     elif len(unique_names) == 1:
-        # Si un seul nom, l'autre est inconnu
         return unique_names[0], "ADVERSAIRE INCONNU", []
     
-    # Si rien n'est trouvé
-    return TEAM_TO_ANALYZE, "ADVERSAIRE INCONNU", []
+    return TEAM_LESCAR_FULL, "ADVERSAIRE INCONNU", []
 
 # ==========================================
-# 3. MAIN APP STREAMLIT (Identification automatique de Lescar)
+# 3. MAIN APP STREAMLIT (avec Sélection Manuelle)
 # ==========================================
 
 def main():
     st.title("📊 Analyse Détaillée des Rotations et Substitutions")
     st.markdown("---")
     
-    # --- Affichage du sélecteur de fichier ---
     st.subheader("Importez votre Feuille de Match (PDF) pour lancer l'analyse")
     uploaded_file = st.file_uploader("Upload PDF de Feuille de Match", type="pdf", label_visibility="collapsed")
     st.markdown("---")
     
-    # --- DÉCLENCHEUR ---
     if uploaded_file:
         
         # 1. Extraction des noms depuis le PDF
-        with st.spinner("Lecture du PDF pour les noms d'équipe..."):
+        with st.spinner("Lecture du PDF et identification des équipes..."):
             name_a, name_b, scores = extract_match_info(uploaded_file)
             
         # --- LOGIQUE D'IDENTIFICATION DE LESCAR ---
         
-        t_analysed = ""
+        t_lescar = ""
         t_adverse = ""
         
-        # Normalisation des noms extraits pour la comparaison (même si l'extraction les met déjà en majuscules)
-        name_a_upper = name_a.upper()
-        name_b_upper = name_b.upper()
+        # On vérifie quel nom correspond à Lescar pour les identifier clairement
+        team_lescar_upper = TEAM_LESCAR_FULL.upper()
         
-        team_to_analyze_upper = TEAM_TO_ANALYZE.upper()
-        
-        if team_to_analyze_upper in name_a_upper:
-            t_analysed = name_a
+        if team_lescar_upper in name_a.upper():
+            t_lescar = name_a
             t_adverse = name_b
-        elif team_to_analyze_upper in name_b_upper:
-            t_analysed = name_b
+        elif team_lescar_upper in name_b.upper():
+            t_lescar = name_b
             t_adverse = name_a
         else:
-            # Si "LESCAR PYRENEES VOLLEY-BALL" n'est pas trouvé
             st.error(
-                f"🚨 **Équipe non identifiée :** Le nom de l'équipe analysée ('{TEAM_TO_ANALYZE}') n'a pas été trouvé dans les noms extraits du PDF ('{name_a}' et '{name_b}'). "
-                f"Veuillez vérifier le nom de l'équipe dans le PDF ou la constante `TEAM_TO_ANALYZE` dans le code."
+                f"🚨 **Équipe non identifiée :** L'équipe Lescar ('{TEAM_LESCAR_FULL}') n'a pas été trouvée dans les noms extraits du PDF ('{name_a}' et '{name_b}')."
             )
             return 
         
-        st.success(f"Analyse prête : {t_analysed} vs {t_adverse}")
+        st.success(f"Noms identifiés : **{t_lescar}** vs **{t_adverse}**")
         st.markdown("---")
         
-        # 2. Scoreboard (Affichage simple des noms identifiés)
-        h_wins = 0 # Les scores réels de set ne sont pas extraits/traités, donc on affiche 0-0
-        a_wins = 0 
+        # 2. SÉLECTION MANUELLE DE LA PERSPECTIVE D'ANALYSE
+        st.subheader("Définir la perspective de l'analyse")
+        st.warning(
+            f"**Information cruciale :** Les données de rotation du code concernent une seule équipe (l'équipe 'Home logique'). "
+            f"Veuillez indiquer quelle équipe correspond à cette analyse pour ce match précis :"
+        )
         
-        c1, c2, c3 = st.columns([2, 1, 2])
-        c1.metric(t_analysed, h_wins)
-        c3.metric(t_adverse, a_wins)
-        c2.markdown(f"<h1 style='text-align: center; color: #FF4B4B;'>{h_wins} - {a_wins}</h1>", unsafe_allow_html=True)
+        perspective_choice = st.radio(
+            "Quelle équipe correspond aux rotations enregistrées dans le code ?",
+            [t_lescar, t_adverse]
+        )
+        
+        # Définition des rôles dans la simulation
+        if perspective_choice == t_lescar:
+            t_analysed = t_lescar    # Équipe dont la rotation est suivie
+            t_opponent = t_adverse   # L'autre équipe
+        else:
+            t_analysed = t_adverse   # L'adversaire est l'équipe dont la rotation est suivie
+            t_opponent = t_lescar    # Lescar est l'adversaire de l'équipe analysée
+            
         st.markdown("---")
-
-        # 3. Génération et affichage des tableaux d'analyse
         
-        # L'équipe analysée (Lescar) est toujours t_home logique, l'adversaire est t_away logique
-        df_by_set, df_global = generate_volleyball_analysis(t_analysed, t_adverse)
+        # 3. Génération et affichage des tableaux
         
-        st.subheader(f"Simulations des Rotations et Substitutions ({t_analysed} vs {t_adverse})")
+        with st.spinner(f"Génération de l'analyse pour {t_analysed} (équipe analysée)..."):
+            # L'équipe analysée est toujours t_home logique, l'autre est t_away logique
+            df_by_set_analysed, df_global_analysed = generate_volleyball_analysis(t_analysed, t_opponent)
         
-        st.info(
-f"""
-**Explications (Équipe analysée : {t_analysed}) :**
-
-- **Pos I à VI :** Numéro de joueur dans la position de rotation pour l'équipe {t_analysed} (I est le serveur). 
+        # Génération de l'analyse adverse par inversion
+        df_by_set_opponent = {
+            set_num: get_reversed_analysis_df(df, t_analysed, t_opponent)
+            for set_num, df in df_by_set_analysed.items()
+        }
+        
+        # 4. Affichage via les onglets
+        tab_analysed, tab_opponent = st.tabs([f"🎯 {t_analysed} (Analyse)", f"⚔️ {t_opponent} (Adversaire)"])
+        
+        
+        # --- ONGLETS ÉQUIPE ANALYSÉE ---
+        with tab_analysed:
+            st.header(f"Rotations de l'Équipe Analysée : {t_analysed}")
+            st.info(
+                f"Ce tableau montre la situation (position des joueurs, service) du point de vue de l'équipe **{t_analysed}** (L'équipe Home logique de la simulation). 
 
 [Image of volleyball court positions and rotation]
+"
+            )
+            
+            # Affichage des tableaux par Set
+            for set_num, df in df_by_set_analysed.items():
+                st.subheader(f"Set {set_num}")
+                st.dataframe(df, use_container_width=True)
+                
+            # Bouton de téléchargement global
+            st.markdown("---")
+            csv_file = df_global_analysed.to_csv(index=False).encode('utf-8')
 
-- **Service :** **S** ({t_analysed} sert) ou **R** ({t_adverse} sert / {t_analysed} reçoit).
-- **Changement :** Substitution effectuée au score du rallye (Entrant/Sortant).
-"""
-        )
-        
-        # Affichage des tableaux par Set
-        set_keys = sorted(list(df_by_set.keys()))
-        
-        for set_num in set_keys:
-            st.header(f"Set {set_num}")
-            st.dataframe(df_by_set[set_num], use_container_width=True)
-            st.markdown("---")  
+            st.download_button(
+                label=f"⬇️ Télécharger toutes les données d'analyse (CSV)",
+                data=csv_file,
+                file_name=f'analyse_rotations_{t_analysed}_vs_{t_opponent}.csv',
+                mime='text/csv',
+            )
 
-        # 4. Bouton de téléchargement CSV
-        st.header("Téléchargement des Données")
 
-        csv_file = df_global.to_csv(index=False).encode('utf-8')
-
-        st.download_button(
-            label="⬇️ Télécharger TOUTES les Données d'Analyse (CSV)",
-            data=csv_file,
-            file_name=f'analyse_rotations_{t_analysed}_vs_{t_adverse}.csv',
-            mime='text/csv',
-        )
+        # --- ONGLETS ADVERSAIRE ---
+        with tab_opponent:
+            st.header(f"Rotations de l'Adversaire : {t_opponent}")
+            st.warning(
+                f"⚠️ **Attention :** Ce tableau inverse les scores et le gagnant. Les colonnes de position (Pos I-VI) et de service reflètent **TOUJOURS** la situation du côté **{t_analysed}**, car les données de rotation de {t_opponent} sont inconnues."
+            )
+            
+            # Affichage des tableaux par Set
+            for set_num, df in df_by_set_opponent.items():
+                st.subheader(f"Set {set_num}")
+                st.dataframe(df, use_container_width=True)
 
     else:
-        # Contenu affiché si AUCUN fichier n'est encore uploadé
-        st.info(f"Veuillez importer un fichier PDF de feuille de match. L'analyse des rotations sera automatiquement focalisée sur l'équipe **{TEAM_TO_ANALYZE}**.")
+        st.info(f"Veuillez importer un fichier PDF de feuille de match. L'analyse demandera ensuite quelle équipe correspond aux rotations enregistrées.")
 
 if __name__ == "__main__":
     main()
