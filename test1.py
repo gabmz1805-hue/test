@@ -8,21 +8,25 @@ import os
 st.set_page_config(page_title="VolleyStats Rotations", page_icon="📊", layout="wide")
 
 # ==========================================
-# CONSTANTE : Nom exact de l'équipe Lescar
+# CONSTANTE : Nom de l'équipe Lescar (Utilisé pour l'identification)
 # ==========================================
 TEAM_LESCAR_FULL = "LESCAR PYRENEES VOLLEY-BALL"
 
 # ==========================================
-# 0. DATA SOURCE ET LOGIQUE DE BASE (Inchangée)
+# 0. DATA SOURCE ET LOGIQUE DE BASE (Mise à jour des Formations de départ)
 # ==========================================
 
 def get_game_data():
-    """Contient les données d'entrée codées en dur pour l'analyse de rotation."""
-    # Rally outcomes: 1 = Home Logique (l'équipe analysée) gagne, 0 = Away Logique (l'adversaire) gagne
+    """
+    Contient les données d'entrée codées en dur pour l'analyse de rotation.
+    L'équipe analysée (Home logique) utilise la formation réelle du Set 1 de doc1.pdf.
+    """
+    # Rally outcomes: 1 = Home Logique (l'équipe analysée = LESCAR) gagne, 0 = Away Logique (l'adversaire) gagne
     return {
         1: {
-            'initial_formation': [5, 15, 9, 8, 7, 23],  
-            'initial_service': 'B', # B = Home Logique 
+            # Formation Set 1 Lescar (doc1.pdf)
+            'initial_formation': [6, 1, 15, 9, 8, 7],  
+            'initial_service': 'B', # B = Home Logique (Début Lescar dans la simulation)
             'substitutions': {3: {4: [(4, 23)]}, 14: {15: [(3, 5)]}},
             'rally_outcomes': [1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1]  
         },
@@ -34,7 +38,7 @@ def get_game_data():
         },
         3: {
             'initial_formation': [4, 14, 15, 9, 8, 7],
-            'initial_service': 'R',  # R = Away Logique (l'équipe adverse)
+            'initial_service': 'R',  
             'substitutions': {12: {15: [(5, 4)]}, 22: {23: [(3, 15)]}},
             'rally_outcomes': [1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0]
         },
@@ -139,7 +143,6 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
 
 def generate_volleyball_analysis(t_home, t_away):
     game_data = get_game_data()
-
     df_by_set = {}
     
     for set_num, data in game_data.items():
@@ -150,7 +153,6 @@ def generate_volleyball_analysis(t_home, t_away):
         df_set = pd.DataFrame(results, columns=header)
         df_by_set[set_num] = df_set
     
-    # Création du DataFrame Global
     all_results_global = []
     global_header = ['Set'] + header
     for set_num, df in df_by_set.items():
@@ -190,6 +192,9 @@ def get_reversed_analysis_df(df_analysed, t_analysed, t_opponent):
 # ==========================================
 
 def extract_match_info(file):
+    """
+    Extracts Team Names. Returns: name1, name2, scores (les deux noms extraits du PDF, l'ordre n'est pas important ici)
+    """
     try:
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
             tmp_file.write(file.getvalue())
@@ -201,29 +206,41 @@ def extract_match_info(file):
         os.remove(tmp_path)
             
     except Exception:
-        return TEAM_LESCAR_FULL, "ADVERSAIRE INCONNU", [] 
+        # Si l'extraction échoue, utilise les noms par défaut pour continuer le flux
+        return "LESCAR PYRENEES VOLLEY-BALL", "ADVERSAIRE INCONNU", [] 
         
-    lines = text.split('\n')
+    # Recherche spécifique des noms d'équipe A et B près des numéros de licence (plus fiable)
+    team_a_match = re.search(r'\s*A\s+(.+)\s*\(\s*B\s*\)', text)
+    team_b_match = re.search(r'\s*\(\s*B\s*\)\s*(.+)\s*N\s+Nom', text)
     
-    potential_names = []
-    for line in lines:
-        if "Début:" in line:
-              parts = re.split(r'Début:.*?(Fin:.*?)', line)
-              for part in parts:
-                  clean_name = re.sub(r'[^A-Z\s]+', '', part).strip()
-                  if len(clean_name) > 3: potential_names.append(clean_name)
-                  
-    unique_names = list(dict.fromkeys(potential_names))
-    
-    if len(unique_names) >= 2:
-        return unique_names[0], unique_names[1], [] 
-    elif len(unique_names) == 1:
-        return unique_names[0], "ADVERSAIRE INCONNU", []
-    
-    return TEAM_LESCAR_FULL, "ADVERSAIRE INCONNU", []
+    name_a = team_a_match.group(1).strip() if team_a_match else None
+    name_b = team_b_match.group(1).strip() if team_b_match else None
+
+    # Si la recherche par regex échoue, on revient à la recherche par ligne (plus faible)
+    if not name_a or not name_b:
+        lines = text.split('\n')
+        potential_names = []
+        for line in lines:
+            if TEAM_LESCAR_FULL in line or "CONFLANS-ANDRESY" in line:
+                 potential_names.append(line.strip())
+
+        unique_names = list(dict.fromkeys(potential_names))
+        
+        # Tentative d'affiner l'extraction des noms A et B
+        try:
+            name_a = lines[17].strip() # Ligne qui contient 'LESCAR PYRENEES VOLLEY-BALL' dans doc1.pdf
+            name_b = lines[18].strip() # Ligne qui contient 'CONFLANS-ANDRESY-JOUY VB 2' dans doc1.pdf
+        except IndexError:
+            pass
+            
+    # Fallback si l'extraction reste incomplète
+    if not name_a and not name_b:
+        return TEAM_LESCAR_FULL, "ADVERSAIRE INCONNU", []
+        
+    return name_a or "LESCAR PYRENEES VOLLEY-BALL", name_b or "ADVERSAIRE INCONNU", []
 
 # ==========================================
-# 3. MAIN APP STREAMLIT (avec Correction Syntaxique)
+# 3. MAIN APP STREAMLIT (Automatisé pour Lescar)
 # ==========================================
 
 def main():
@@ -238,12 +255,12 @@ def main():
         
         # 1. Extraction des noms depuis le PDF
         with st.spinner("Lecture du PDF et identification des équipes..."):
-            name_a, name_b, scores = extract_match_info(uploaded_file)
+            name_a, name_b, _ = extract_match_info(uploaded_file)
             
-        # --- LOGIQUE D'IDENTIFICATION DE LESCAR ---
+        # --- LOGIQUE D'IDENTIFICATION DE LESCAR (Simplifiée/Automatisée) ---
         t_lescar = ""
         t_adverse = ""
-        team_lescar_upper = TEAM_LESCAR_FULL.upper()
+        team_lescar_upper = "LESCAR PYRENEES VOLLEY".upper() # Recherche simplifiée
         
         if team_lescar_upper in name_a.upper():
             t_lescar = name_a
@@ -251,61 +268,48 @@ def main():
         elif team_lescar_upper in name_b.upper():
             t_lescar = name_b
             t_adverse = name_a
+        elif "LESCAR" in name_a.upper(): # Fallback pour les extractions incomplètes
+            t_lescar = name_a
+            t_adverse = name_b
+        elif "LESCAR" in name_b.upper():
+            t_lescar = name_b
+            t_adverse = name_a
         else:
             st.error(
-                f"🚨 **Équipe non identifiée :** L'équipe Lescar ('{TEAM_LESCAR_FULL}') n'a pas été trouvée dans les noms extraits du PDF ('{name_a}' et '{name_b}')."
+                f"🚨 **Équipe non identifiée :** L'équipe Lescar n'a pas été trouvée dans les noms extraits du PDF ('{name_a}' et '{name_b}')."
             )
             return 
         
-        st.success(f"Noms identifiés : **{t_lescar}** vs **{t_adverse}**")
+        # 2. Définition des rôles dans la simulation (Lescar est l'équipe dont on a la rotation)
+        # On suppose que les données codées en dur (get_game_data) sont celles de Lescar.
+        t_analysed = t_lescar   
+        t_opponent = t_adverse   
+        
+        st.success(f"Analyse des Rotations de **{t_analysed}** (vs {t_opponent}) lancée.")
         st.markdown("---")
         
-        # 2. SÉLECTION MANUELLE DE LA PERSPECTIVE D'ANALYSE
-        st.subheader("Définir la perspective de l'analyse")
-        # Correction 1: Utilisation des triples guillemets pour éviter la SyntaxError
-        st.warning(
-            f"""
-            **Information cruciale :** Les données de rotation du code concernent une seule équipe (l'équipe 'Home logique'). 
-            Veuillez indiquer quelle équipe correspond à cette analyse pour ce match précis :
-            """
-        )
-        
-        perspective_choice = st.radio(
-            "Quelle équipe correspond aux rotations enregistrées dans le code ?",
-            [t_lescar, t_adverse]
-        )
-        
-        # Définition des rôles dans la simulation
-        if perspective_choice == t_lescar:
-            t_analysed = t_lescar   
-            t_opponent = t_adverse 
-        else:
-            t_analysed = t_adverse  
-            t_opponent = t_lescar   
-            
-        st.markdown("---")
-        
-        # 3. Génération et affichage des tableaux
+        # 3. Génération des tableaux
         
         with st.spinner(f"Génération de l'analyse pour {t_analysed} (équipe analysée)..."):
+            # L'équipe analysée est toujours t_home logique, l'autre est t_away logique
             df_by_set_analysed, df_global_analysed = generate_volleyball_analysis(t_analysed, t_opponent)
         
+        # Génération de l'analyse adverse par inversion
         df_by_set_opponent = {
             set_num: get_reversed_analysis_df(df, t_analysed, t_opponent)
             for set_num, df in df_by_set_analysed.items()
         }
         
         # 4. Affichage via les onglets
-        tab_analysed, tab_opponent = st.tabs([f"🎯 {t_analysed} (Analyse)", f"⚔️ {t_opponent} (Adversaire)"])
+        tab_analysed, tab_opponent = st.tabs([f"🎯 Rotations {t_analysed}", f"⚔️ Rotations {t_opponent}"])
         
         
-        # --- ONGLETS ÉQUIPE ANALYSÉE ---
+        # --- ONGLETS LESCAR ---
         with tab_analysed:
             st.header(f"Rotations de l'Équipe Analysée : {t_analysed}")
-            # Correction 2: Utilisation des triples guillemets
             st.info(
                 f"""
-                Ce tableau montre la situation (position des joueurs, service) du point de vue de l'équipe **{t_analysed}** (L'équipe Home logique de la simulation).                 """
+                Ce tableau montre la situation (position des joueurs, service) du point de vue de l'équipe **{t_analysed}** (dont la rotation est suivie dans le code).                 """
             )
             
             for set_num, df in df_by_set_analysed.items():
@@ -316,7 +320,7 @@ def main():
             csv_file = df_global_analysed.to_csv(index=False).encode('utf-8')
 
             st.download_button(
-                label=f"⬇️ Télécharger toutes les données d'analyse (CSV)",
+                label=f"⬇️ Télécharger toutes les données d'analyse {t_analysed} (CSV)",
                 data=csv_file,
                 file_name=f'analyse_rotations_{t_analysed}_vs_{t_opponent}.csv',
                 mime='text/csv',
@@ -326,7 +330,6 @@ def main():
         # --- ONGLETS ADVERSAIRE ---
         with tab_opponent:
             st.header(f"Rotations de l'Adversaire : {t_opponent}")
-            # Correction 3: Utilisation des triples guillemets
             st.warning(
                 f"""
                 ⚠️ **Attention :** Ce tableau inverse les scores et le gagnant. Les colonnes de position (Pos I-VI) et de service reflètent **TOUJOURS** la situation du côté **{t_analysed}**, car les données de rotation de {t_opponent} sont inconnues.
@@ -338,7 +341,7 @@ def main():
                 st.dataframe(df, use_container_width=True)
 
     else:
-        st.info(f"Veuillez importer un fichier PDF de feuille de match. L'analyse demandera ensuite quelle équipe correspond aux rotations enregistrées.")
+        st.info(f"Veuillez importer un fichier PDF de feuille de match. Le programme identifiera automatiquement **LESCAR PYRENEES VOLLEY-BALL** comme l'équipe analysée et son adversaire.")
 
 if __name__ == "__main__":
     main()
