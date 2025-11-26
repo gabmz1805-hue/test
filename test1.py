@@ -11,11 +11,13 @@ import os
 
 st.set_page_config(page_title="VolleyStats Rotations", page_icon="📊", layout="wide")
 
-# Définition de l'équipe analysée que nous recherchons
-TEAM_TO_ANALYZE = "LESCAR"
+# ==========================================
+# CONSTANTE CRUCIALE : Nom exact de l'équipe à analyser
+# ==========================================
+TEAM_TO_ANALYZE = "LESCAR PYRENEES VOLLEY-BALL"
 
 # ==========================================
-# 0. DATA SOURCE (Les données de rotation codées en dur - CONSERVEES)
+# 0. DATA SOURCE (Les données de rotation codées en dur)
 # ==========================================
 
 def get_game_data():
@@ -54,7 +56,7 @@ def get_game_data():
     }
 
 # ==========================================
-# 1. LOGIQUE DE ROTATION ET ANALYSE (Utilise t_home=t_analysed et t_away=t_adverse)
+# 1. LOGIQUE DE ROTATION ET ANALYSE (Inchangée)
 # ==========================================
 
 def rotate_positions(positions):
@@ -84,8 +86,8 @@ def apply_substitutions(positions, home_score, away_score, subs_data):
 def analyze_set(set_num, initial_formation, initial_service, substitutions_data, rally_outcomes, t_home, t_away):
     """Simule un set rallye par rallye et génère le tableau d'analyse."""
     
-    home_pts = 0 # Points de l'équipe analysée
-    away_pts = 0 # Points de l'équipe adverse
+    home_pts = 0 
+    away_pts = 0 
     service_state = 'S' if initial_service == 'B' else 'R'  
     current_positions = list(initial_formation)
     results = []
@@ -108,7 +110,6 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
     for rally_idx, rally_outcome in enumerate(rally_outcomes):
         rally_num = rally_idx + 1
         
-        # Rotation se produit uniquement si Home (équipe analysée) gagne le rallye ALORS qu'elle était en réception (R)
         should_rotate = (service_state == 'R' and rally_outcome == 1)
         if should_rotate:
             current_positions = rotate_positions(current_positions)
@@ -168,8 +169,8 @@ def generate_volleyball_analysis(t_home, t_away):
             data['initial_service'],
             data['substitutions'],  
             data['rally_outcomes'],
-            t_home, # L'équipe analysée est passée en t_home logique
-            t_away # L'équipe adverse est passée en t_away logique
+            t_home, 
+            t_away 
         )
         
         df_set = pd.DataFrame(results, columns=header)
@@ -185,16 +186,14 @@ def generate_volleyball_analysis(t_home, t_away):
     return df_by_set, df_global
 
 # ==========================================
-# 2. LOGIQUE D'EXTRACTION PDF
+# 2. LOGIQUE D'EXTRACTION PDF (Ajustée pour la recherche exacte)
 # ==========================================
 
 def extract_match_info(file):
     """
     Extracts Team Names and Set Scores.
-    Returns: t_home (PDF Home Name), t_away (PDF Away Name), scores
+    Returns: name1, name2, scores (les deux noms extraits du PDF, l'ordre n'est pas important ici)
     """
-    # Utilisation de TEAM_TO_ANALYZE pour initialiser t_home si l'extraction échoue
-    t_home, t_away, scores = TEAM_TO_ANALYZE, "ADVERSAIRE INCONNU", [] 
     
     try:
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
@@ -207,8 +206,9 @@ def extract_match_info(file):
         os.remove(tmp_path)
             
     except Exception as e:
-        st.warning(f"Impossible d'extraire le texte du PDF : {e}. Utilisation des noms par défaut.")
-        return t_home, t_away, scores 
+        # En cas d'erreur de lecture, retourne le nom de Lescar et un nom par défaut
+        st.warning(f"Impossible d'extraire le texte du PDF : {e}.")
+        return TEAM_TO_ANALYZE, "ADVERSAIRE INCONNU", [] 
         
     lines = text.split('\n')
     
@@ -217,23 +217,21 @@ def extract_match_info(file):
         if "Début:" in line:
               parts = re.split(r'Début:.*?(Fin:.*?)', line)
               for part in parts:
-                  # Nettoyage et capitalisation pour faciliter la recherche (Lescar vs LESCAR)
+                  # Nettoyage : conversion en majuscules (comme la constante TEAM_TO_ANALYZE) et suppression des caractères non alphabétiques/espaces
                   clean_name = re.sub(r'[^A-Z\s]+', '', part).strip()
                   if len(clean_name) > 3: potential_names.append(clean_name)
                   
     unique_names = list(dict.fromkeys(potential_names))
     
-    # Si deux noms sont trouvés, on les retourne (le mapping Home/Away du PDF n'a plus d'importance ici)
+    # On retourne les deux premiers noms trouvés dans le PDF
     if len(unique_names) >= 2:
-        return unique_names[1], unique_names[0], scores # Retourne les deux noms extraits (PDF Domicile, PDF Extérieur)
+        return unique_names[0], unique_names[1], [] 
     elif len(unique_names) == 1:
-        # Si un seul nom est trouvé, c'est peut-être Lescar, l'autre reste inconnu
-        if unique_names[0] == TEAM_TO_ANALYZE:
-             return unique_names[0], "ADVERSAIRE INCONNU", scores
-        else:
-            return TEAM_TO_ANALYZE, unique_names[0], scores
-
-    return TEAM_TO_ANALYZE, "ADVERSAIRE INCONNU", scores
+        # Si un seul nom, l'autre est inconnu
+        return unique_names[0], "ADVERSAIRE INCONNU", []
+    
+    # Si rien n'est trouvé
+    return TEAM_TO_ANALYZE, "ADVERSAIRE INCONNU", []
 
 # ==========================================
 # 3. MAIN APP STREAMLIT (Identification automatique de Lescar)
@@ -251,36 +249,41 @@ def main():
     # --- DÉCLENCHEUR ---
     if uploaded_file:
         
-        # 1. Extraction des noms depuis le PDF (récupère les noms du PDF sans se soucier du statut Domicile/Extérieur)
+        # 1. Extraction des noms depuis le PDF
         with st.spinner("Lecture du PDF pour les noms d'équipe..."):
-            name1, name2, scores = extract_match_info(uploaded_file)
+            name_a, name_b, scores = extract_match_info(uploaded_file)
             
         # --- LOGIQUE D'IDENTIFICATION DE LESCAR ---
         
-        # Vérifie quel nom est Lescar pour définir t_analysed et t_adverse
+        t_analysed = ""
+        t_adverse = ""
         
-        # On compare les noms trouvés (name1 et name2) avec l'équipe que nous voulons analyser (TEAM_TO_ANALYZE)
-        if name1 == TEAM_TO_ANALYZE:
-            t_analysed = name1
-            t_adverse = name2
-        elif name2 == TEAM_TO_ANALYZE:
-            t_analysed = name2
-            t_adverse = name1
+        # Normalisation des noms extraits pour la comparaison (même si l'extraction les met déjà en majuscules)
+        name_a_upper = name_a.upper()
+        name_b_upper = name_b.upper()
+        
+        team_to_analyze_upper = TEAM_TO_ANALYZE.upper()
+        
+        if team_to_analyze_upper in name_a_upper:
+            t_analysed = name_a
+            t_adverse = name_b
+        elif team_to_analyze_upper in name_b_upper:
+            t_analysed = name_b
+            t_adverse = name_a
         else:
-            # Si "Lescar" n'est pas trouvé (erreur dans le PDF ou nom différent)
+            # Si "LESCAR PYRENEES VOLLEY-BALL" n'est pas trouvé
             st.error(
-                f"🚨 **Erreur d'identification :** L'équipe '{TEAM_TO_ANALYZE}' n'a pas été trouvée dans le PDF. "
-                f"Vérifiez le PDF ou mettez à jour la constante `TEAM_TO_ANALYZE` dans le code."
+                f"🚨 **Équipe non identifiée :** Le nom de l'équipe analysée ('{TEAM_TO_ANALYZE}') n'a pas été trouvé dans les noms extraits du PDF ('{name_a}' et '{name_b}'). "
+                f"Veuillez vérifier le nom de l'équipe dans le PDF ou la constante `TEAM_TO_ANALYZE` dans le code."
             )
             return 
         
-        # --- FIN DE LA LOGIQUE D'IDENTIFICATION ---
+        st.success(f"Analyse prête : {t_analysed} vs {t_adverse}")
+        st.markdown("---")
         
-        # 2. Scoreboard (Utilise les noms définis)
-        # Note : Le calcul h_wins/a_wins est basé sur le mapping du PDF, ce qui peut être incorrect 
-        # si le PDF ne contient pas de données de score. On simplifie en affichant les noms.
-        h_wins = sum(1 for s in scores if isinstance(s, dict) and s.get('Home', 0) > s.get('Away', 0))
-        a_wins = sum(1 for s in scores if isinstance(s, dict) and s.get('Away', 0) > s.get('Home', 0))
+        # 2. Scoreboard (Affichage simple des noms identifiés)
+        h_wins = 0 # Les scores réels de set ne sont pas extraits/traités, donc on affiche 0-0
+        a_wins = 0 
         
         c1, c2, c3 = st.columns([2, 1, 2])
         c1.metric(t_analysed, h_wins)
@@ -299,8 +302,7 @@ def main():
 f"""
 **Explications (Équipe analysée : {t_analysed}) :**
 
-- **Pos I à VI :** Numéro de joueur dans la position de rotation pour l'équipe {t_analysed} (I est le serveur).
-
+- **Pos I à VI :** Numéro de joueur dans la position de rotation pour l'équipe {t_analysed} (I est le serveur). 
 
 [Image of volleyball court positions and rotation]
 
