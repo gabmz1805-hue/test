@@ -17,7 +17,7 @@ def get_game_data():
     """Contient les données d'entrée codées en dur pour l'analyse de rotation."""
     return {
         1: {
-            'initial_formation': [5, 15, 9, 8, 7, 23], 
+            'initial_formation': [5, 15, 9, 8, 7, 23],  
             'initial_service': 'B',
             'substitutions': {3: {4: [(4, 23)]}, 14: {15: [(3, 5)]}},
             'rally_outcomes': [1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1]  
@@ -30,7 +30,7 @@ def get_game_data():
         },
         3: {
             'initial_formation': [4, 14, 15, 9, 8, 7],
-            'initial_service': 'R', 
+            'initial_service': 'R',  
             'substitutions': {12: {15: [(5, 4)]}, 22: {23: [(3, 15)]}},
             'rally_outcomes': [1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0]
         },
@@ -43,7 +43,7 @@ def get_game_data():
         5: {
             'initial_formation': [6, 1, 15, 9, 8, 7],
             'initial_service': 'B',
-            'substitutions': {}, 
+            'substitutions': {},  
             'rally_outcomes': [1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1]
         }
     }
@@ -61,6 +61,7 @@ def apply_substitutions(positions, lescar_score, merignac_score, subs_data):
     change_string = ""
     updated_positions = list(positions)
     
+    # La clé de substitution est le score de Mérignac
     if merignac_score in subs_data and lescar_score in subs_data[merignac_score]:
         substitutions = subs_data[merignac_score][lescar_score]
         
@@ -74,7 +75,8 @@ def apply_substitutions(positions, lescar_score, merignac_score, subs_data):
                 change_string += f"#{player_in}/#{player_out}"
                 
             except ValueError:
-                pass
+                # Le joueur sortant n'est pas sur le terrain, on ignore (utile si un joueur est déjà sorti)
+                pass 
                 
     return updated_positions, change_string
 
@@ -83,7 +85,8 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
     
     lescar_pts = 0
     merignac_pts = 0
-    service_state = 'S' if initial_service == 'B' else 'R' 
+    # 'S' = Lescar sert (service), 'R' = Mérignac sert (réception Lescar)
+    service_state = 'S' if initial_service == 'B' else 'R'  
     current_positions = list(initial_formation)
     results = []
 
@@ -97,6 +100,7 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
     for rally_idx, rally_outcome in enumerate(rally_outcomes):
         rally_num = rally_idx + 1
         
+        # Rotation se produit uniquement si Lescar (joueur B) gagne le rallye ALORS qu'il était en réception (R)
         should_rotate = (service_state == 'R' and rally_outcome == 1)
         if should_rotate:
             current_positions = rotate_positions(current_positions)
@@ -104,15 +108,17 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
         prev_service_state = service_state
         current_change_string = ""
         
-        if rally_outcome == 1: 
+        if rally_outcome == 1:  # Lescar (joueur B) gagne le rallye
             lescar_pts += 1
-            if prev_service_state == 'R': service_state = 'S' 
+            if prev_service_state == 'R': 
+                service_state = 'S'  # Changement de service pour Lescar
             current_positions, current_change_string = apply_substitutions(
                 current_positions, lescar_pts, merignac_pts, substitutions_data
             )
-        else: 
+        else:  # Mérignac (joueur A) gagne le rallye
             merignac_pts += 1
-            if prev_service_state == 'S': service_state = 'R' 
+            if prev_service_state == 'S': 
+                service_state = 'R'  # Changement de service pour Mérignac
             current_positions, current_change_string = apply_substitutions(
                 current_positions, lescar_pts, merignac_pts, substitutions_data
             )
@@ -120,16 +126,17 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
         new_row = [
             rally_num,
             merignac_pts if rally_outcome == 0 else '',
-            lescar_pts if rally_outcome == 1 else '', 
-            lescar_pts, 
+            lescar_pts if rally_outcome == 1 else '',  
+            lescar_pts,  
             merignac_pts,
             *current_positions,
-            service_state, 
-            'Lescar' if rally_outcome == 1 else 'Mérignac', 
+            service_state,  
+            'Lescar' if rally_outcome == 1 else 'Mérignac',  
             current_change_string
         ]
         results.append(new_row)
         
+        # Vérification de la fin du set (score à 25 ou 15 au 5ème set avec 2 points d'écart)
         if (lescar_pts >= 25 and lescar_pts - merignac_pts >= 2) or \
            (merignac_pts >= 25 and merignac_pts - lescar_pts >= 2) or \
            (set_num == 5 and (lescar_pts >= 15 or merignac_pts >= 15) and abs(lescar_pts - merignac_pts) >= 2):
@@ -146,16 +153,17 @@ def generate_volleyball_analysis():
     
     for set_num, data in game_data.items():
         header, results = analyze_set(
-            set_num, 
-            data['initial_formation'], 
+            set_num,  
+            data['initial_formation'],  
             data['initial_service'],
-            data['substitutions'], 
+            data['substitutions'],  
             data['rally_outcomes']
         )
         
         df_set = pd.DataFrame(results, columns=header)
         df_by_set[set_num] = df_set
         
+        # Préparation des données pour le DataFrame global
         for row in results:
             row_with_set = [set_num] + row
             all_results_global.append(row_with_set)
@@ -169,16 +177,23 @@ def generate_volleyball_analysis():
 # 2. LOGIQUE D'EXTRACTION PDF (Simplifiée pour les noms/scores)
 # ==========================================
 
-# Seule la fonction d'extraction d'info générale est nécessaire pour l'interface
-# Les autres fonctions d'extraction de compositions ont été supprimées car non utilisées.
-
 def extract_match_info(file):
     """Extracts Team Names and Set Scores."""
     text = ""
     t_home, t_away, scores = "Équipe Domicile", "Équipe Extérieure", []
     try:
-        with pdfplumber.open(file) as pdf:
+        # Nécessite un fichier temporaire pour pdfplumber si le fichier vient de st.file_uploader
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+            tmp_file.write(file.getvalue())
+            tmp_path = tmp_file.name
+        
+        with pdfplumber.open(tmp_path) as pdf:
             text = pdf.pages[0].extract_text()
+        
+        import os
+        os.remove(tmp_path)
+            
     except Exception as e:
         st.warning(f"Impossible d'extraire le texte du PDF : {e}. Utilisation des noms par défaut.")
         return t_home, t_away, scores # Retourne les noms par défaut si l'extraction échoue
@@ -186,23 +201,23 @@ def extract_match_info(file):
     lines = text.split('\n')
     
     # A. Detect Team Names
-    # ... (logique de détection des noms, simplifiée pour éviter les erreurs)
     potential_names = []
     for line in lines:
         if "Début:" in line:
-             parts = re.split(r'Début:.*?(Fin:.*?)', line)
-             for part in parts:
-                 clean_name = re.sub(r'[^A-Z\s]+', '', part).strip()
-                 if len(clean_name) > 3: potential_names.append(clean_name)
-                 
+              parts = re.split(r'Début:.*?(Fin:.*?)', line)
+              for part in parts:
+                  # Nettoyage pour ne garder que le nom en majuscules
+                  clean_name = re.sub(r'[^A-Z\s]+', '', part).strip()
+                  if len(clean_name) > 3: potential_names.append(clean_name)
+                  
     unique_names = list(dict.fromkeys(potential_names))
     if len(unique_names) > 1:
         t_home = unique_names[1]
         t_away = unique_names[0]
 
     # B. Detect Set Scores (pour le Scoreboard)
-    scores = []
-    # ... (logique d'extraction des scores de set, simplifiée)
+    # Logique d'extraction des scores de set (non implémentée dans votre exemple initial)
+    # Pour l'instant, 'scores' reste vide, forçant le Scoreboard à 0-0.
     
     return t_home, t_away, scores
 
@@ -213,6 +228,22 @@ def extract_match_info(file):
 def main():
     st.title("📊 Analyse Détaillée des Rotations et Substitutions")
     st.markdown("---")
+    
+    # --- NOUVELLE SECTION D'ACCUEIL ---
+    st.header("Bienvenue dans VolleyStats Rotations! 🏐")
+    st.markdown(
+        """
+        Cette application simule les **rotations** et **substitutions** d'un match de volleyball
+        et génère une analyse détaillée des joueurs en poste à chaque rallye.
+
+        Par défaut, les résultats ci-dessous sont basés sur un **jeu de données d'exemple** (Lescar vs Mérignac).
+        
+        Pour analyser votre propre match et mettre à jour les noms des équipes/scores finaux, utilisez
+        l'outil d'importation PDF dans la barre latérale.
+        """
+    )
+    st.markdown("---")
+    # ----------------------------------
 
     t_home = "Lescar"
     t_away = "Mérignac"
@@ -223,8 +254,8 @@ def main():
         uploaded_file = st.file_uploader("Upload PDF de Feuille de Match", type="pdf")
         st.markdown("---")
         st.markdown(
-            "**Note :** L'analyse détaillée des rotations ci-dessous utilise des données de rallye codées en dur, "
-            "car les informations de rallye et de substitution ne sont pas disponibles dans le PDF."
+            "**Note :** L'analyse détaillée des rotations ci-dessous utilise des **données de rallye codées en dur**, "
+            "car les informations de rallye et de substitution ne sont pas disponibles dans les PDF de feuille de match usuels."
         )
 
     if uploaded_file:
@@ -233,8 +264,10 @@ def main():
             t_home, t_away, scores = extract_match_info(uploaded_file)
             
     # --- AFFICHAGE DU SCOREBOARD (Utilise les noms extraits ou par défaut) ---
-    h_wins = sum(1 for s in scores if 'Home' in s and 'Away' in s and s['Home'] > s['Away'])
-    a_wins = sum(1 for s in scores if 'Home' in s and 'Away' in s and s['Away'] > s['Home'])
+    # La logique de comptage des sets est simplifiée car la liste 'scores' est souvent vide.
+    # Pour l'exemple, le score affiché est basé sur les données extraites du PDF ou 0-0 par défaut.
+    h_wins = sum(1 for s in scores if isinstance(s, dict) and s.get('Home', 0) > s.get('Away', 0))
+    a_wins = sum(1 for s in scores if isinstance(s, dict) and s.get('Away', 0) > s.get('Home', 0))
     
     c1, c2, c3 = st.columns([2, 1, 2])
     c1.metric(t_home, h_wins)
@@ -246,18 +279,19 @@ def main():
     # --- CONTENU D'ANALYSE PRÉFÉRÉ (Rotations par Set) ---
     df_by_set, df_global = generate_volleyball_analysis()
 
-    st.subheader("Simulations des Rotations et Substitutions (Lescar vs Mérignac)")
+    st.subheader("Simulations des Rotations et Substitutions")
     
     # Ajout d'une balise d'image pour rendre l'explication plus claire
     st.info(
 """
 **Explications :**
 
-- **Pos I à VI :** Numéro de joueur dans la position de rotation (I est le serveur). 
+- **Pos I à VI :** Numéro de joueur dans la position de rotation (I est le serveur).
 
-[Image of volleyball rotation diagram]
 
-- **Service :** **S** (Lescar sert) ou **R** (Mérignac sert/Lescar reçoit).
+[Image of volleyball court positions and rotation]
+
+- **Service :** **S** (L'équipe analysée, Lescar, sert) ou **R** (L'équipe adverse, Mérignac, sert / Lescar reçoit).
 - **Changement :** Substitution effectuée au score du rallye (Entrant/Sortant).
 """
     )
@@ -268,10 +302,10 @@ def main():
     for set_num in set_keys:
         st.header(f"Set {set_num}")
         st.dataframe(df_by_set[set_num], use_container_width=True)
-        st.markdown("---") 
+        st.markdown("---")  
 
     # --- Bouton de téléchargement CSV (des Rotations) ---
-    st.header("Téléchargement")
+    st.header("Téléchargement des Données")
 
     csv_file = df_global.to_csv(index=False).encode('utf-8')
 
