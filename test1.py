@@ -32,7 +32,24 @@ def get_game_data():
             'substitutions': {8: {9: [(10, 6)]}, 19: {20: [(4, 7)]}},
             'rally_outcomes': [1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1]
         },
-        # ... (Autres sets inchangés)
+        3: {
+            'initial_formation': [4, 14, 15, 9, 8, 7],
+            'initial_service': 'R',  # R = Away Logique (l'équipe adverse)
+            'substitutions': {12: {15: [(5, 4)]}, 22: {23: [(3, 15)]}},
+            'rally_outcomes': [1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0]
+        },
+        4: {
+            'initial_formation': [6, 1, 15, 9, 8, 7],
+            'initial_service': 'B',
+            'substitutions': {15: {16: [(3, 6)]}},
+            'rally_outcomes': [1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1]
+        },
+        5: {
+            'initial_formation': [6, 1, 15, 9, 8, 7],
+            'initial_service': 'B',
+            'substitutions': {},  
+            'rally_outcomes': [1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1]
+        }
     }
 
 def rotate_positions(positions):
@@ -41,7 +58,6 @@ def rotate_positions(positions):
 def apply_substitutions(positions, home_score, away_score, subs_data):
     change_string = ""
     updated_positions = list(positions)
-    # Logique de substitution inchangée
     if away_score in subs_data and home_score in subs_data[away_score]:
         substitutions = subs_data[away_score][home_score]
         
@@ -60,8 +76,6 @@ def apply_substitutions(positions, home_score, away_score, subs_data):
     return updated_positions, change_string
 
 def analyze_set(set_num, initial_formation, initial_service, substitutions_data, rally_outcomes, t_home, t_away):
-    """Simule un set rallye par rallye et génère le tableau d'analyse."""
-    
     home_pts = 0 
     away_pts = 0 
     service_state = 'S' if initial_service == 'B' else 'R'  
@@ -92,12 +106,12 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
         prev_service_state = service_state
         current_change_string = ""
         
-        if rally_outcome == 1:  # Home Logique (t_home) gagne
+        if rally_outcome == 1:
             home_pts += 1
             if prev_service_state == 'R': service_state = 'S' 
             current_positions, current_change_string = apply_substitutions(current_positions, home_pts, away_pts, substitutions_data)
             winner_name = t_home
-        else:  # Away Logique (t_away) gagne
+        else:
             away_pts += 1
             if prev_service_state == 'S': service_state = 'R' 
             current_positions, current_change_string = apply_substitutions(current_positions, home_pts, away_pts, substitutions_data)
@@ -124,12 +138,10 @@ def analyze_set(set_num, initial_formation, initial_service, substitutions_data,
     return header, results
 
 def generate_volleyball_analysis(t_home, t_away):
-    """Génère l'analyse complète (t_home est l'équipe analysée)."""
     game_data = get_game_data()
 
     df_by_set = {}
-    df_global = pd.DataFrame() 
-
+    
     for set_num, data in game_data.items():
         header, results = analyze_set(
             set_num, data['initial_formation'], data['initial_service'],
@@ -138,6 +150,7 @@ def generate_volleyball_analysis(t_home, t_away):
         df_set = pd.DataFrame(results, columns=header)
         df_by_set[set_num] = df_set
     
+    # Création du DataFrame Global
     all_results_global = []
     global_header = ['Set'] + header
     for set_num, df in df_by_set.items():
@@ -147,33 +160,27 @@ def generate_volleyball_analysis(t_home, t_away):
     
     return df_by_set, df_global
 
-def get_reversed_analysis_df(df_analysed, t_analysed, t_adverse):
-    """Crée une version du DataFrame d'analyse vue de l'équipe adverse."""
+def get_reversed_analysis_df(df_analysed, t_analysed, t_opponent):
     df_reversed = df_analysed.copy()
 
-    # Inverse les noms des colonnes pour refléter la vue adverse
     old_headers = df_analysed.columns.tolist()
     new_headers = [
-        h.replace(f'{t_analysed} pts', 'TEMP_ADVERSE_PTS')
-         .replace(f'{t_adverse} pts', f'{t_analysed} pts')
-         .replace('TEMP_ADVERSE_PTS', f'{t_adverse} pts')
-         .replace(f'Score {t_analysed[0]}', 'TEMP_SCORE_ADVERSE')
-         .replace(f'Score {t_adverse[0]}', f'Score {t_analysed[0]}')
-         .replace('TEMP_SCORE_ADVERSE', f'Score {t_adverse[0]}')
+        h.replace(f'{t_analysed} pts', 'TEMP_OPPONENT_PTS')
+         .replace(f'{t_opponent} pts', f'{t_analysed} pts')
+         .replace('TEMP_OPPONENT_PTS', f'{t_opponent} pts')
+         .replace(f'Score {t_analysed[0]}', 'TEMP_SCORE_OPPONENT')
+         .replace(f'Score {t_opponent[0]}', f'Score {t_analysed[0]}')
+         .replace('TEMP_SCORE_OPPONENT', f'Score {t_opponent[0]}')
         for h in old_headers
     ]
     df_reversed.columns = new_headers
 
-    # Inversion des points marqués (colonnes 1 et 2 dans le DF original)
-    df_reversed[[f'{t_adverse} pts', f'{t_analysed} pts']] = df_analysed.iloc[:, [2, 1]] 
+    df_reversed[[f'{t_opponent} pts', f'{t_analysed} pts']] = df_analysed.iloc[:, [2, 1]] 
+    df_reversed[[f'Score {t_opponent[0]}', f'Score {t_analysed[0]}']] = df_analysed.iloc[:, [4, 3]] 
 
-    # Inversion des scores cumulés (colonnes 3 et 4 dans le DF original)
-    df_reversed[[f'Score {t_adverse[0]}', f'Score {t_analysed[0]}']] = df_analysed.iloc[:, [4, 3]] 
-
-    # Inversion de la colonne 'Gagnant'
     df_reversed['Gagnant'] = df_analysed['Gagnant'].replace({
-        t_analysed: t_adverse,
-        t_adverse: t_analysed
+        t_analysed: t_opponent,
+        t_opponent: t_analysed
     })
     
     return df_reversed
@@ -183,9 +190,6 @@ def get_reversed_analysis_df(df_analysed, t_analysed, t_adverse):
 # ==========================================
 
 def extract_match_info(file):
-    """
-    Extracts Team Names. Returns: name1, name2, scores (les deux noms extraits du PDF, l'ordre n'est pas important ici)
-    """
     try:
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
             tmp_file.write(file.getvalue())
@@ -219,7 +223,7 @@ def extract_match_info(file):
     return TEAM_LESCAR_FULL, "ADVERSAIRE INCONNU", []
 
 # ==========================================
-# 3. MAIN APP STREAMLIT (avec Sélection Manuelle)
+# 3. MAIN APP STREAMLIT (avec Correction Syntaxique)
 # ==========================================
 
 def main():
@@ -237,11 +241,8 @@ def main():
             name_a, name_b, scores = extract_match_info(uploaded_file)
             
         # --- LOGIQUE D'IDENTIFICATION DE LESCAR ---
-        
         t_lescar = ""
         t_adverse = ""
-        
-        # On vérifie quel nom correspond à Lescar pour les identifier clairement
         team_lescar_upper = TEAM_LESCAR_FULL.upper()
         
         if team_lescar_upper in name_a.upper():
@@ -261,9 +262,12 @@ def main():
         
         # 2. SÉLECTION MANUELLE DE LA PERSPECTIVE D'ANALYSE
         st.subheader("Définir la perspective de l'analyse")
+        # Correction 1: Utilisation des triples guillemets pour éviter la SyntaxError
         st.warning(
-            f"**Information cruciale :** Les données de rotation du code concernent une seule équipe (l'équipe 'Home logique'). "
-            f"Veuillez indiquer quelle équipe correspond à cette analyse pour ce match précis :"
+            f"""
+            **Information cruciale :** Les données de rotation du code concernent une seule équipe (l'équipe 'Home logique'). 
+            Veuillez indiquer quelle équipe correspond à cette analyse pour ce match précis :
+            """
         )
         
         perspective_choice = st.radio(
@@ -273,21 +277,19 @@ def main():
         
         # Définition des rôles dans la simulation
         if perspective_choice == t_lescar:
-            t_analysed = t_lescar    # Équipe dont la rotation est suivie
-            t_opponent = t_adverse   # L'autre équipe
+            t_analysed = t_lescar   
+            t_opponent = t_adverse 
         else:
-            t_analysed = t_adverse   # L'adversaire est l'équipe dont la rotation est suivie
-            t_opponent = t_lescar    # Lescar est l'adversaire de l'équipe analysée
+            t_analysed = t_adverse  
+            t_opponent = t_lescar   
             
         st.markdown("---")
         
         # 3. Génération et affichage des tableaux
         
         with st.spinner(f"Génération de l'analyse pour {t_analysed} (équipe analysée)..."):
-            # L'équipe analysée est toujours t_home logique, l'autre est t_away logique
             df_by_set_analysed, df_global_analysed = generate_volleyball_analysis(t_analysed, t_opponent)
         
-        # Génération de l'analyse adverse par inversion
         df_by_set_opponent = {
             set_num: get_reversed_analysis_df(df, t_analysed, t_opponent)
             for set_num, df in df_by_set_analysed.items()
@@ -300,19 +302,16 @@ def main():
         # --- ONGLETS ÉQUIPE ANALYSÉE ---
         with tab_analysed:
             st.header(f"Rotations de l'Équipe Analysée : {t_analysed}")
+            # Correction 2: Utilisation des triples guillemets
             st.info(
-                f"Ce tableau montre la situation (position des joueurs, service) du point de vue de l'équipe **{t_analysed}** (L'équipe Home logique de la simulation). 
-
-[Image of volleyball court positions and rotation]
-"
+                f"""
+                Ce tableau montre la situation (position des joueurs, service) du point de vue de l'équipe **{t_analysed}** (L'équipe Home logique de la simulation).                 """
             )
             
-            # Affichage des tableaux par Set
             for set_num, df in df_by_set_analysed.items():
                 st.subheader(f"Set {set_num}")
                 st.dataframe(df, use_container_width=True)
                 
-            # Bouton de téléchargement global
             st.markdown("---")
             csv_file = df_global_analysed.to_csv(index=False).encode('utf-8')
 
@@ -327,11 +326,13 @@ def main():
         # --- ONGLETS ADVERSAIRE ---
         with tab_opponent:
             st.header(f"Rotations de l'Adversaire : {t_opponent}")
+            # Correction 3: Utilisation des triples guillemets
             st.warning(
-                f"⚠️ **Attention :** Ce tableau inverse les scores et le gagnant. Les colonnes de position (Pos I-VI) et de service reflètent **TOUJOURS** la situation du côté **{t_analysed}**, car les données de rotation de {t_opponent} sont inconnues."
+                f"""
+                ⚠️ **Attention :** Ce tableau inverse les scores et le gagnant. Les colonnes de position (Pos I-VI) et de service reflètent **TOUJOURS** la situation du côté **{t_analysed}**, car les données de rotation de {t_opponent} sont inconnues.
+                """
             )
             
-            # Affichage des tableaux par Set
             for set_num, df in df_by_set_opponent.items():
                 st.subheader(f"Set {set_num}")
                 st.dataframe(df, use_container_width=True)
