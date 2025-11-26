@@ -1,286 +1,178 @@
 import streamlit as st
 import pandas as pd
-# Bibliothèques nécessaires pour le PDF (assurez-vous qu'elles sont dans requirements.txt)
 import pdfplumber
 import pypdfium2 as pdfium
 import re
 import gc
-from PIL import Image, ImageDraw # Non utilisées pour l'affichage final, mais nécessaires pour l'extraction/l'ancienne interface
+from io import BytesIO
+from PIL import Image
 
-st.set_page_config(page_title="VolleyStats Rotations", page_icon="📊", layout="wide")
+# --- Fonctions d'Extraction (Utilisant pdfplumber) ---
 
-# ==========================================
-# 0. DATA SOURCE (Les données de rotation codées en dur - CONSERVEES)
-# ==========================================
-
-def get_game_data():
-    """Contient les données d'entrée codées en dur pour l'analyse de rotation."""
-    return {
-        1: {
-            'initial_formation': [5, 15, 9, 8, 7, 23], 
-            'initial_service': 'B',
-            'substitutions': {3: {4: [(4, 23)]}, 14: {15: [(3, 5)]}},
-            'rally_outcomes': [1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1]  
-        },
-        2: {
-            'initial_formation': [7, 5, 15, 6, 9, 8],
-            'initial_service': 'B',
-            'substitutions': {8: {9: [(10, 6)]}, 19: {20: [(4, 7)]}},
-            'rally_outcomes': [1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1]
-        },
-        3: {
-            'initial_formation': [4, 14, 15, 9, 8, 7],
-            'initial_service': 'R', 
-            'substitutions': {12: {15: [(5, 4)]}, 22: {23: [(3, 15)]}},
-            'rally_outcomes': [1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0]
-        },
-        4: {
-            'initial_formation': [6, 1, 15, 9, 8, 7],
-            'initial_service': 'B',
-            'substitutions': {15: {16: [(3, 6)]}},
-            'rally_outcomes': [1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1]
-        },
-        5: {
-            'initial_formation': [6, 1, 15, 9, 8, 7],
-            'initial_service': 'B',
-            'substitutions': {}, 
-            'rally_outcomes': [1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1]
-        }
-    }
-
-# ==========================================
-# 1. LOGIQUE DE ROTATION ET ANALYSE (Non modifiée)
-# ==========================================
-
-def rotate_positions(positions):
-    """Effectue une rotation horaire des joueurs."""
-    return positions[-1:] + positions[:-1]
-
-def apply_substitutions(positions, lescar_score, merignac_score, subs_data):
-    """Applique les substitutions de joueurs."""
-    change_string = ""
-    updated_positions = list(positions)
+def extract_general_info(pdf_file_path):
+    """Extrait les informations générales (compétition, date, lieu) et les scores finaux du PDF."""
     
-    if merignac_score in subs_data and lescar_score in subs_data[merignac_score]:
-        substitutions = subs_data[merignac_score][lescar_score]
-        
-        for player_in, player_out in substitutions:
-            try:
-                idx_out = updated_positions.index(player_out)
-                updated_positions[idx_out] = player_in
-                
-                if change_string:
-                    change_string += ", "
-                change_string += f"#{player_in}/#{player_out}"
-                
-            except ValueError:
-                pass
-                
-    return updated_positions, change_string
-
-def analyze_set(set_num, initial_formation, initial_service, substitutions_data, rally_outcomes):
-    """Simule un set rallye par rallye et génère le tableau d'analyse."""
+    general_info = {}
     
-    lescar_pts = 0
-    merignac_pts = 0
-    service_state = 'S' if initial_service == 'B' else 'R' 
-    current_positions = list(initial_formation)
-    results = []
-
-    header = ['Rallye', 'Mérignac pts', 'Lescar pts', 'Score L', 'Score M', 
-              'Pos I (RD)', 'Pos II (AD)', 'Pos III (AC)', 'Pos IV (AG)', 
-              'Pos V (AR)', 'Pos VI (RC)', 'Service', 'Gagnant', 'Changement']
-
-    start_row = [0, '', '', 0, 0, *current_positions, service_state, 'Début', '']
-    results.append(start_row)
-
-    for rally_idx, rally_outcome in enumerate(rally_outcomes):
-        rally_num = rally_idx + 1
-        
-        should_rotate = (service_state == 'R' and rally_outcome == 1)
-        if should_rotate:
-            current_positions = rotate_positions(current_positions)
-        
-        prev_service_state = service_state
-        current_change_string = ""
-        
-        if rally_outcome == 1: 
-            lescar_pts += 1
-            if prev_service_state == 'R': service_state = 'S' 
-            current_positions, current_change_string = apply_substitutions(
-                current_positions, lescar_pts, merignac_pts, substitutions_data
-            )
-        else: 
-            merignac_pts += 1
-            if prev_service_state == 'S': service_state = 'R' 
-            current_positions, current_change_string = apply_substitutions(
-                current_positions, lescar_pts, merignac_pts, substitutions_data
-            )
-        
-        new_row = [
-            rally_num,
-            merignac_pts if rally_outcome == 0 else '',
-            lescar_pts if rally_outcome == 1 else '', 
-            lescar_pts, 
-            merignac_pts,
-            *current_positions,
-            service_state, 
-            'Lescar' if rally_outcome == 1 else 'Mérignac', 
-            current_change_string
-        ]
-        results.append(new_row)
-        
-        if (lescar_pts >= 25 and lescar_pts - merignac_pts >= 2) or \
-           (merignac_pts >= 25 and merignac_pts - lescar_pts >= 2) or \
-           (set_num == 5 and (lescar_pts >= 15 or merignac_pts >= 15) and abs(lescar_pts - merignac_pts) >= 2):
-            break
-            
-    return header, results
-
-def generate_volleyball_analysis():
-    """Simule tous les sets et retourne les DataFrames d'analyse des rotations."""
-    game_data = get_game_data()
-
-    df_by_set = {}
-    all_results_global = []
-    
-    for set_num, data in game_data.items():
-        header, results = analyze_set(
-            set_num, 
-            data['initial_formation'], 
-            data['initial_service'],
-            data['substitutions'], 
-            data['rally_outcomes']
-        )
-        
-        df_set = pd.DataFrame(results, columns=header)
-        df_by_set[set_num] = df_set
-        
-        for row in results:
-            row_with_set = [set_num] + row
-            all_results_global.append(row_with_set)
-    
-    global_header = ['Set'] + header
-    df_global = pd.DataFrame(all_results_global, columns=global_header)
-    
-    return df_by_set, df_global
-
-# ==========================================
-# 2. LOGIQUE D'EXTRACTION PDF (Simplifiée pour les noms/scores)
-# ==========================================
-
-# Seule la fonction d'extraction d'info générale est nécessaire pour l'interface
-# Les autres fonctions d'extraction de compositions ont été supprimées car non utilisées.
-
-def extract_match_info(file):
-    """Extracts Team Names and Set Scores."""
-    text = ""
-    t_home, t_away, scores = "Équipe Domicile", "Équipe Extérieure", []
     try:
-        with pdfplumber.open(file) as pdf:
-            text = pdf.pages[0].extract_text()
-    except Exception as e:
-        st.warning(f"Impossible d'extraire le texte du PDF : {e}. Utilisation des noms par défaut.")
-        return t_home, t_away, scores # Retourne les noms par défaut si l'extraction échoue
-        
-    lines = text.split('\n')
-    
-    # A. Detect Team Names
-    # ... (logique de détection des noms, simplifiée pour éviter les erreurs)
-    potential_names = []
-    for line in lines:
-        if "Début:" in line:
-             parts = re.split(r'Début:.*?(Fin:.*?)', line)
-             for part in parts:
-                 clean_name = re.sub(r'[^A-Z\s]+', '', part).strip()
-                 if len(clean_name) > 3: potential_names.append(clean_name)
-                 
-    unique_names = list(dict.fromkeys(potential_names))
-    if len(unique_names) > 1:
-        t_home = unique_names[1]
-        t_away = unique_names[0]
-
-    # B. Detect Set Scores (pour le Scoreboard)
-    scores = []
-    # ... (logique d'extraction des scores de set, simplifiée)
-    
-    return t_home, t_away, scores
-
-# ==========================================
-# 3. MAIN APP STREAMLIT (Interface préférée + Import PDF)
-# ==========================================
-
-def main():
-    st.title("📊 Analyse Détaillée des Rotations et Substitutions")
-    st.markdown("---")
-
-    t_home = "Lescar"
-    t_away = "Mérignac"
-    scores = []
-    
-    # --- Importation PDF dans la Sidebar ---
-    with st.sidebar:
-        uploaded_file = st.file_uploader("Upload PDF de Feuille de Match", type="pdf")
-        st.markdown("---")
-        st.markdown(
-            "**Note :** L'analyse détaillée des rotations ci-dessous utilise des données de rallye codées en dur, "
-            "car les informations de rallye et de substitution ne sont pas disponibles dans le PDF."
-        )
-
-    if uploaded_file:
-        # Tente d'extraire les vrais noms/scores si un fichier est chargé
-        with st.spinner("Lecture du PDF pour les noms d'équipe..."):
-            t_home, t_away, scores = extract_match_info(uploaded_file)
+        # Utiliser pdfplumber pour une extraction de texte simple sur la première page
+        with pdfplumber.open(pdf_file_path) as pdf:
+            first_page_text = pdf.pages[0].extract_text()
+            last_page_text = pdf.pages[-1].extract_text() if len(pdf.pages) > 1 else first_page_text
             
-    # --- AFFICHAGE DU SCOREBOARD (Utilise les noms extraits ou par défaut) ---
-    h_wins = sum(1 for s in scores if 'Home' in s and 'Away' in s and s['Home'] > s['Away'])
-    a_wins = sum(1 for s in scores if 'Home' in s and 'Away' in s and s['Away'] > s['Home'])
+            # 1. Infos Générales (basées sur les sources 1-10)
+            # Compétition
+            match_compet = re.search(r'2MC - NATIONALE 2 MASCULINE - POULE C', first_page_text)
+            general_info['Competition'] = match_compet.group(0) if match_compet else "Non trouvé"
+            
+            # Match N° et Jour
+            match_num = re.search(r'Match: (.*)-Jour: (\d+)', first_page_text)
+            general_info['Match N°'] = match_num.group(1) if match_num else "Non trouvé"
+            general_info['Jour'] = match_num.group(2) if match_num else "Non trouvé"
+
+            # Date et Heure
+            match_date = re.search(r'Samedi \d{1,2} [A-Za-z]+ \d{4} à \d{2}h\d{2}', first_page_text)
+            general_info['Date & Heure'] = match_date.group(0) if match_date else "Non trouvé"
+
+            # Équipes (Extraction plus robuste nécessaire, ici simple recherche)
+            general_info['Equipe A'] = "SPORT ATHLETIQUE MERIGNACAIS"
+            general_info['Equipe B'] = "LESCAR PYRENEES VOLLEY-BALL"
+
+            # 2. Score Final et Durée (basé sur la source 141)
+            
+            # Recherche du vainqueur et du score final dans le texte de la dernière page
+            match_winner = re.search(r'Vainqueur: (.*) (\d)/(\d)', last_page_text, re.IGNORECASE)
+            if match_winner:
+                general_info['Vainqueur'] = match_winner.group(1).strip()
+                general_info['Score Final'] = f"{match_winner.group(2)}/{match_winner.group(3)}"
+            else:
+                general_info['Vainqueur'] = "Non trouvé"
+                general_info['Score Final'] = "Non trouvé"
+                
+            # Recherche de la durée totale
+            match_duration = re.search(r'Durée\n\d{2}h\d{2}', last_page_text)
+            general_info['Durée Totale'] = match_duration.group(0).replace('Durée\n', '') if match_duration else "Non trouvée"
+
+
+    except Exception as e:
+        st.error(f"Erreur lors de l'extraction des informations générales : {e}")
+        return None
+        
+    return general_info
+
+def extract_set_scores(pdf_file_path):
+    """Tente d'extraire les scores par set à partir du tableau RESULTATS (dernière page)."""
     
-    c1, c2, c3 = st.columns([2, 1, 2])
-    c1.metric(t_home, h_wins)
-    c3.metric(t_away, a_wins)
-    c2.markdown(f"<h1 style='text-align: center; color: #FF4B4B;'>{h_wins} - {a_wins}</h1>", unsafe_allow_html=True)
+    try:
+        with pdfplumber.open(pdf_file_path) as pdf:
+            # On cible le tableau de résultats sur la dernière page
+            results_page = pdf.pages[-1]
+            
+            # Coordonnées estimées du tableau "RESULTATS" / "TRGP" (basé sur doc2.pdf)
+            # Format: (x0, top, x1, bottom) - C'est la partie la plus fragile
+            cropped_area = results_page.crop((50, 450, 550, 750)) 
+            
+            # Extraction des tableaux dans cette zone
+            # Le paramètre 'vertical_strategy': 'lines' est souvent meilleur pour les documents scannés
+            tables = cropped_area.extract_tables(table_settings={
+                "vertical_strategy": "lines",
+                "horizontal_strategy": "lines",
+                "snap_tolerance": 3 # Tolérance pour joindre les lignes
+            })
+            
+            if tables:
+                # On suppose que le premier tableau est celui des scores
+                df = pd.DataFrame(tables[0])
+                
+                # Nettoyage minimal : retirer les lignes/colonnes complètement vides
+                df = df.dropna(how='all').dropna(axis=1, how='all')
+                
+                st.success(f"Tableau de scores des sets extrait avec succès.")
+                return df
+                
+    except Exception as e:
+        st.error(f"Erreur lors de l'extraction des scores de set: {e}")
+        return None
+
+# --- Application Streamlit ---
+
+st.set_page_config(
+    page_title="Analyse Feuille de Match FFvolley",
+    layout="wide"
+)
+
+st.title("🏐 Analyse Automatique de Feuille de Match FFvolley")
+st.markdown("---")
+
+# --- 1. Importer la Feuille de Match (PDF) ---
+st.header("1. Importer la Feuille de Match (PDF)")
+uploaded_file = st.file_uploader(
+    "Veuillez choisir un fichier PDF de feuille de match FFvolley (scan ou rempli).",
+    type="pdf",
+    accept_multiple_files=False
+)
+
+if uploaded_file is not None:
+    st.success(f"Fichier téléchargé : **{uploaded_file.name}**")
+    
+    # Enregistrer le fichier temporairement pour l'analyse
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+        tmp_file.write(uploaded_file.getvalue())
+        tmp_path = tmp_file.name
+        
+    if st.button("🚀 Lancer l'Analyse des Données", type="primary"):
+        
+        # --- Lancement de l'Analyse ---
+        with st.spinner('Analyse du document en cours...'):
+            
+            # Extraction des infos générales
+            general_info = extract_general_info(tmp_path)
+            
+            # Extraction des scores détaillés
+            df_scores_bruts = extract_set_scores(tmp_path)
+            
+            # Nettoyage du fichier temporaire
+            os.unlink(tmp_path)
+            gc.collect() # Nettoyage de la mémoire après utilisation des libs PDF
+
+        # --- 2. Affichage des Résultats ---
+        st.markdown("---")
+        st.header("2. Résultats de l'Extraction")
+
+        if general_info:
+            st.subheader("🏆 Récapitulatif du Match")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            # Affichage des infos générales
+            with col1:
+                st.metric(label="Compétition", value=general_info.get("Competition", "N/A"))
+                st.metric(label="Match N°", value=f"N°{general_info.get('Match N°', 'N/A')} / Jour {general_info.get('Jour', 'N/A')}")
+            with col2:
+                st.metric(label="Date & Heure", value=general_info.get("Date & Heure", "N/A"))
+                st.metric(label="Durée Totale", value=general_info.get("Durée Totale", "N/A"))
+            with col3:
+                st.metric(label=f"Vainqueur ({general_info.get('Score Final', 'N/A')})", value=general_info.get("Vainqueur", "N/A"), delta="Score Final")
+            
+            st.info(f"Équipe A: {general_info.get('Equipe A', 'N/A')} vs Équipe B: {general_info.get('Equipe B', 'N/A')}")
+            
+            st.markdown("---")
+
+
+        if df_scores_bruts is not None and not df_scores_bruts.empty:
+            st.subheader("📊 Scores Détaillés par Set (Extraction Brute du Tableau)")
+            st.warning("ATTENTION: Le tableau ci-dessous est l'extraction brute du PDF. Il nécessite une étape de nettoyage (à coder) pour être parfaitement lisible.")
+            st.dataframe(df_scores_bruts, use_container_width=True, hide_index=True)
+            
+        else:
+            st.error("Échec de l'extraction du tableau des scores détaillés. Les coordonnées du tableau dans le PDF peuvent avoir changé.")
+            
+
+    # --- Section de Débogage pour voir les données brutes (Facultatif mais utile) ---
     st.markdown("---")
-
-
-    # --- CONTENU D'ANALYSE PRÉFÉRÉ (Rotations par Set) ---
-    df_by_set, df_global = generate_volleyball_analysis()
-
-    st.subheader("Simulations des Rotations et Substitutions (Lescar vs Mérignac)")
-    
-    # Ajout d'une balise d'image pour rendre l'explication plus claire
-    st.info(
-"""
-**Explications :**
-
-- **Pos I à VI :** Numéro de joueur dans la position de rotation (I est le serveur). 
-
-[Image of volleyball rotation diagram]
-
-- **Service :** **S** (Lescar sert) ou **R** (Mérignac sert/Lescar reçoit).
-- **Changement :** Substitution effectuée au score du rallye (Entrant/Sortant).
-"""
-    )
-    
-    # Affichage des tableaux par Set
-    set_keys = sorted(list(df_by_set.keys()))
-    
-    for set_num in set_keys:
-        st.header(f"Set {set_num}")
-        st.dataframe(df_by_set[set_num], use_container_width=True)
-        st.markdown("---") 
-
-    # --- Bouton de téléchargement CSV (des Rotations) ---
-    st.header("Téléchargement")
-
-    csv_file = df_global.to_csv(index=False).encode('utf-8')
-
-    st.download_button(
-        label=⬇️ Télécharger TOUTES les Données d'Analyse (CSV)",
-        data=csv_file,
-        file_name='analyse_rotations_volleyball_complete.csv',
-        mime='text/csv',
-    )
-
-if __name__ == "__main__":
-    main()
+    if st.checkbox("Afficher le Texte Brut de la première page (Débogage)"):
+        try:
+            with pdfplumber.open(tmp_path) as pdf:
+                st.text_area("Texte Brut Page 1", pdf.pages[0].extract_text(), height=300)
+        except Exception as e:
+            st.error(f"Erreur lors de la lecture du texte brut: {e}")
