@@ -116,9 +116,17 @@ def extract_results_summary(tables):
                     continue
         
     except Exception as e:
+        # L'avertissement ici devrait déjà être suffisant pour indiquer qu'il y a eu un problème.
+        # Le RangeIndex with these indexers [nan] est probablement dû à une ligne de la table 
+        # qui est entièrement vide ou mal reconnue par Camelot et Pandas
         st.warning(f"Avertissement lors de l'extraction des résultats : {e}")
 
-    sets_df = pd.DataFrame(sets_data).sort_values('Set').reset_index(drop=True)
+    # FIX: Vérifier si sets_data est vide avant d'essayer de trier
+    if sets_data:
+        sets_df = pd.DataFrame(sets_data).sort_values('Set').reset_index(drop=True)
+    else:
+        sets_df = pd.DataFrame() # Retourne un DataFrame vide
+        
     return final_result, start_time, end_time, total_duration, sets_df
 
 
