@@ -1,221 +1,330 @@
 import streamlit as st
+import camelot
 import pandas as pd
-import pdfplumber
-import pypdfium2 as pdfium  # Non utilisé dans cette version simplifiée, mais conservé
 import re
-import gc
-import tempfile  # <--- CORRECTION: Ajout de l'importation manquante
+import tempfile
 import os
-from io import BytesIO
-from PIL import Image
 
-# --- Fonctions d'Extraction (Utilisant pdfplumber et re) ---
+# --- Fonctions d'extraction robustes ---
 
-def extract_all_data(pdf_file_path):
-    """Extrait toutes les informations clés du PDF en utilisant des expressions régulières."""
+def clean_text(text):
+    """Nettoie le texte en retirant les sauts de ligne et l'espace excessif."""
+    if pd.isna(text):
+        return ""
+    # Remplacement des multiples espaces par un seul et suppression des retours à la ligne
+    text = str(text).replace('\n', ' ').strip()
+    return re.sub(r'\s+', ' ', text)
+
+def find_and_clean_table(tables, content_keyword, content_keyword_2=None):
+    """
+    Recherche un DataFrame contenant un ou deux mots-clés spécifiques.
     
-    general_info = {}
-    df_scores = None
-    df_joueurs = None
-    df_officiels = None
+    Args:
+        tables (list): Liste des objets Table de Camelot.
+        content_keyword (str): Premier mot-clé pour identifier le tableau (ex: 'Vainqueur').
+        content_keyword_2 (str, optional): Second mot-clé pour affiner.
+
+    Returns:
+        pd.DataFrame: Le DataFrame nettoyé ou un DataFrame vide.
+    """
+    for table in tables:
+        df = table.df
+        df_string = df.to_string()
+        
+        # Condition 1: Le premier mot-clé est présent
+        if content_keyword in df_string:
+            # Condition 2: Si un second mot-clé est fourni, il doit aussi être présent
+            if content_keyword_2 is None or content_keyword_2 in df_string:
+                # Appliquer la fonction de nettoyage à toutes les cellules
+                df = df.applymap(clean_text)
+                return df
+            
+    return pd.DataFrame() # Retourne vide si non trouvé
+
+
+def extract_results_summary(tables):
+    """Extrait le tableau des RESULTATS et les données de score/durée."""
+    results_df_raw = find_and_clean_table(tables, 'Vainqueur')
     
+    final_result, start_time, end_time, total_duration, sets_data = "Non trouvé", "Non trouvé", "Non trouvé", "Non trouvé", []
+    
+    if results_df_raw.empty:
+        return final_result, start_time, end_time, total_duration, pd.DataFrame(sets_data)
+
     try:
-        with pdfplumber.open(pdf_file_path) as pdf:
-            # Concaténer tout le texte pour une recherche globale
-            full_text = "".join(page.extract_text() for page in pdf.pages if page.extract_text() is not None)
-            
-            # --- 1. Extraction des informations générales ---
-            
-            # Compétition (Ex: 2MC - NATIONALE 2 MASCULINE - POULE C)
-            match_compet = re.search(r'(2MC - NATIONALE \d MASCULINE - POULE [A-Z])', full_text)
-            general_info['Competition'] = match_compet.group(1) if match_compet else "Non trouvé"
+        # Tenter d'extraire les infos de la dernière ligne (Vainqueur)
+        winner_row = results_df_raw[results_df_raw.iloc[:, -1].str.contains('Vainqueur', na=False, case=False)]
+        if not winner_row.empty:
+             # On prend la dernière colonne (ou l'avant-dernière) et on nettoie pour le score final
+            final_result = clean_text(winner_row.iloc[0, -2] + winner_row.iloc[0, -1])
+            final_result = final_result.replace("Vainqueur:", "").strip()
 
-            # Match N° et Jour (Ex: Match: 2MC033-Jour: 06)
-            match_num = re.search(r'Match: (.*-Jour: \d+)', full_text)
-            general_info['Match N°'] = match_num.group(1) if match_num else "Non trouvé"
-
-            # Date et Heure (Ex: Samedi 15 Novembre 2025 à 20h30)
-            match_date = re.search(r'([A-Za-z]+ \d{1,2} [A-Za-z]+ \d{4} à \d{2}h\d{2})', full_text)
-            general_info['Date & Heure'] = match_date.group(1) if match_date else "Non trouvé"
-
-            # Équipes (Extraction basée sur le nom dans la feuille doc2.pdf)
-            general_info['Equipe A'] = "SPORT ATHLETIQUE MERIGNACAIS"
-            general_info['Equipe B'] = "LESCAR PYRENEES VOLLEY-BALL"
+        # Tenter d'extraire les heures (en bas du tableau RESULTATS)
+        time_row = results_df_raw[results_df_raw.iloc[:, 0].str.contains('Debut', na=False, case=False)]
+        if not time_row.empty:
+            row = time_row.iloc[0]
+            # Assumer les colonnes 0, 1, 2 contiennent Début, Fin, Durée
+            start_time = row.iloc[0].replace('Debut', '').strip()
+            end_time = row.iloc[1].replace('Fin', '').strip()
+            total_duration = row.iloc[2].replace('Durée', '').strip()
+        
+        # Tenter d'extraire les scores par set
+        # On cherche le tableau des résultats détaillés par set (colonnes TRGP, Durée, PGRT)
+        
+        # Filtrer les lignes qui contiennent 'TRGP' (Tours Reçus Gagnés Perdus) pour définir le haut du tableau
+        start_index = results_df_raw[results_df_raw.iloc[:, 0].str.contains('TRGP', na=False)].index.max()
+        
+        if start_index is not None:
+            # Les lignes de scores sont juste après
+            score_rows = results_df_raw.iloc[start_index+1:]
             
-            # Vainqueur et Score Final (Ex: Vainqueur: LESCAR PYRENEES VOLLEY 3/2)
-            match_winner = re.search(r'Vainqueur: (.*) (\d)/(\d)', full_text, re.IGNORECASE)
-            if match_winner:
-                general_info['Vainqueur'] = match_winner.group(1).strip()
-                general_info['Score Final'] = f"{match_winner.group(2)}/{match_winner.group(3)}"
-            else:
-                general_info['Vainqueur'] = "Non trouvé"
-                general_info['Score Final'] = "Non trouvé"
+            for i, row in score_rows.iterrows():
+                # Le tableau est généralement structuré comme: Col A (Points), Col B (Score A, Durée, Set), Col C (Points B)
+                try:
+                    set_num = None
+                    duration = None
+                    score_a = None
+                    score_b = None
+                    
+                    # On cherche le numéro de set et la durée dans la colonne centrale (index 1)
+                    col_b_parts = row.iloc[1].split()
+                    for part in col_b_parts:
+                        if "'" in part:
+                            duration = part
+                        if part.isdigit() and len(part) < 2 and int(part) in [1, 2, 3, 4, 5]:
+                            set_num = int(part)
+                            
+                    # Si on a le numéro de set et la durée, on peut essayer d'extraire les scores
+                    if set_num and duration:
+                        # Le score A est la valeur numérique la plus claire dans la colonne A
+                        match_a = re.search(r'\d+', row.iloc[0])
+                        if match_a: score_a = int(match_a.group(0))
 
-            # Durée Totale (Ex: 2h32)
-            match_duration = re.search(r'Durée\n(\d{1,2}h\d{2})', full_text)
-            general_info['Durée Totale'] = match_duration.group(1) if match_duration else "Non trouvée"
-            
-            # --- 2. Extraction du tableau des résultats (Méthode BRUTE et FRAGILE) ---
-            
-            # Tente de trouver le tableau RESULTATS/TRGP
-            try:
-                # La méthode extract_tables est la plus susceptible de fonctionner si la structure est propre
-                page_results = pdf.pages[-1] # Souvent sur la dernière page
-                
-                # Coordonnées estimées pour le tableau de scores (colonne TRGP, Durée, PGRT)
-                # Ces coordonnées sont spécifiques au document doc2.pdf et peuvent nécessiter un ajustement
-                tables = page_results.extract_tables(table_settings={
-                    "vertical_strategy": "lines",
-                    "horizontal_strategy": "lines",
-                    "snap_tolerance": 3,
-                    "min_words_vertical": 2 # Aide à ignorer les très petites colonnes
+                        # Le score B est la valeur numérique la plus claire dans la colonne C
+                        match_b = re.search(r'\d+', row.iloc[2])
+                        if match_b: score_b = int(match_b.group(0))
+                        
+                        if score_a is not None and score_b is not None:
+                             sets_data.append({
+                                'Set': set_num, 
+                                'Score': f"{score_a}-{score_b}", 
+                                'Durée': duration
+                            })
+                            
+                except IndexError:
+                    # Fin du tableau
+                    continue
+        
+    except Exception as e:
+        st.warning(f"Avertissement lors de l'extraction des résultats : {e}")
+
+    sets_df = pd.DataFrame(sets_data).sort_values('Set').reset_index(drop=True)
+    return final_result, start_time, end_time, total_duration, sets_df
+
+
+def extract_players_data(tables):
+    """Extrait le tableau des joueurs (Nom, Prénom, Licence, Numéro)."""
+    # Recherche du tableau qui contient les mots-clés 'Nom Prénom' et 'Licence' (partie basse du PDF)
+    players_df_raw = find_and_clean_table(tables, 'Nom Prénom', 'Licence')
+    players_df_clean = pd.DataFrame()
+    
+    if players_df_raw.empty:
+        return players_df_clean
+
+    try:
+        # La structure est typiquement: Col 0(N° A), Col 1(Nom Prénom A), Col 2(Licence A), Col 3(N° B), Col 4(Nom Prénom B), Col 5(Licence B)
+        # On va chercher les colonnes clés (index 0 à 5)
+        raw_data = players_df_raw.iloc[1:].iloc[:, 0:6].reset_index(drop=True)
+        players_data = []
+        
+        # Extraire les noms des équipes de la ligne d'en-tête (une ligne au-dessus des joueurs)
+        team_a_name = clean_text(players_df_raw.iloc[0, 1]) if players_df_raw.shape[1] > 1 else "Équipe A"
+        team_b_name = clean_text(players_df_raw.iloc[0, 4]) if players_df_raw.shape[1] > 4 else "Équipe B"
+        
+        for index, row in raw_data.iterrows():
+            # Équipe A (vérifier si le numéro de joueur est présent)
+            if row.iloc[0].strip():
+                players_data.append({
+                    'Équipe': team_a_name,
+                    'N°': row.iloc[0],
+                    'Nom Prénom': row.iloc[1],
+                    'Licence': row.iloc[2]
+                })
+            # Équipe B
+            if row.iloc[3].strip():
+                players_data.append({
+                    'Équipe': team_b_name,
+                    'N°': row.iloc[3],
+                    'Nom Prénom': row.iloc[4],
+                    'Licence': row.iloc[5]
                 })
                 
-                # On cherche le tableau contenant "TRGP" et "PGRT" (le tableau des résultats)
-                for table in tables:
-                    df_temp = pd.DataFrame(table)
-                    if not df_temp.empty and any(df_temp.iloc[0].astype(str).str.contains('TRGP', na=False)):
-                        df_scores = df_temp
-                        break
-                        
-                if df_scores is not None:
-                    # Nettoyage minimal du DataFrame (Retirer les lignes/colonnes vides)
-                    df_scores = df_scores.dropna(how='all').dropna(axis=1, how='all')
-                    # Renommer les colonnes pour la clarté
-                    if not df_scores.empty:
-                        df_scores.columns = ['A: TRGP', 'Durée par Set', 'B: PGRT']
-                        df_scores = df_scores.iloc[1:6].copy() # On ne garde que les 5 sets
-                    
-            except Exception as e:
-                st.warning(f"Échec de l'extraction des scores détaillés (nécessite ajustement des coordonnées): {e}")
+        # On enlève les lignes vides ou de 'LIBEROS'
+        players_df_clean = pd.DataFrame(players_data)
+        players_df_clean = players_df_clean[~players_df_clean['Nom Prénom'].str.contains('LIBEROS', na=False)]
+        players_df_clean = players_df_clean[players_df_clean['Nom Prénom'] != '']
+        
+    except Exception as e:
+        st.warning(f"Avertissement lors du nettoyage des joueurs : {e}")
+        
+    return players_df_clean
+
+
+def extract_officials_data(tables):
+    """Extrait le tableau des officiels (Arbitres, Marqueur, etc.)."""
+    # Recherche du tableau qui contient les mots-clés 'Arbitres' et 'Signature'
+    officials_df_raw = find_and_clean_table(tables, 'Arbitres', 'Signature')
+    officials_df_clean = pd.DataFrame()
+    
+    if officials_df_raw.empty:
+        return officials_df_clean
+    
+    try:
+        # On cherche le bloc Officiels dans les premières colonnes (Fonction / Nom Prénom / Licence)
+        
+        # Identification des lignes pertinentes (Arbitres, Marqueur, R.Salle)
+        relevant_rows = officials_df_raw[officials_df_raw.iloc[:, 0].str.contains('Arbitres|Marqueur|R.Salle', na=False)].iloc[:, 0:3]
+        
+        if not relevant_rows.empty:
+            officials_data = []
+            for i, row in relevant_rows.iterrows():
+                # La colonne 0 est la fonction (Ter, 2ème, Marqueur)
+                function = row.iloc[0]
+                # La colonne 1 est le nom/prénom
+                name = row.iloc[1]
+                # La colonne 2 est la Ligue/Licence
+                license_info = row.iloc[2]
                 
+                # Nettoyage des libellés de fonction/nom
+                function = function.replace('Arbitres', '').strip()
                 
-            # --- 3. Création des DataFrames basés sur le document doc2.pdf (Extraction Manuelle pour la structure) ---
+                officials_data.append({
+                    'Fonction': function,
+                    'Nom Prénom': name,
+                    'Licence': license_info
+                })
             
-            # Nous utilisons une extraction basée sur la structure identifiée dans l'exemple (doc2.pdf)
-            
-            # Liste des joueurs (Extraction basée sur le tableau de la source 173)
-            joueurs_a = [("01", "CLEUET SEBASTIEN", "1564008"), ("02", "BECCAERT GEOFFREY", "1869973", "Libéro"), 
-                         ("04", "RENOUX LUCAS", "1869919"), ("05", "BRUN MATHIAS", "2101947"), 
-                         ("06", "BERTHEUIL TIMEO", "2056745", "Libéro"), ("07", "DRUELLES MATHIS", "2206359"), 
-                         ("08", "COULET MAEL", "1989810"), ("09", "BLANC BORIS", "1890454"), 
-                         ("10", "HOUDAYER BAPTISTE", "1803838"), ("14", "DEFRANCE QUENTIN", "1943782"), 
-                         ("18", "MINGOUA STEVE", "1613466")]
-            
-            joueurs_b = [("01", "FANFELLE QUENTIN", "2298718"), ("03", "AUGE LUCAS", "2117711"), 
-                         ("05", "NABOS TOM", "2037423"), ("06", "LAYRE FLORIAN", "1975916"), 
-                         ("07", "JACQUES BASTIEN", "2102294"), ("(08)", "MARTIN EDOUARD", "1805073"), 
-                         ("09", "AUGE THOMAS", "2099463"), ("11", "CASTAINGS SIMIN", "2196675", "Libéro"), 
-                         ("15", "MAGOMAYEV DANIEL", "2384752"), ("F", "FRECHINIE BENOIT", "1406613")]
-            
-            # Création du DataFrame Joueurs combiné
-            joueurs_list = []
-            for n, nom, l, *role in joueurs_a:
-                 joueurs_list.append([general_info['Equipe A'], n, nom, l, role[0] if role else ''])
-            for n, nom, l, *role in joueurs_b:
-                 joueurs_list.append([general_info['Equipe B'], n, nom, l, role[0] if role else ''])
-                 
-            df_joueurs = pd.DataFrame(joueurs_list, columns=["Équipe", "N°", "Nom Prénom", "Licence", "Rôle"])
-            
-            # DataFrame Officiels (Extraction basée sur le tableau de la source 184 et 187/188)
-            officiels_data = {
-                "Rôle": ["Arbitre 1er", "Arbitre 2ème", "Marqueur", "R. Salle", "Entraîneur A", "Entraîneur B"],
-                "Nom Prénom": ["REQUEDA SYLVAIN", "BARRABES ARNO", "PERDRIAU PAULINE", "GACON JEAN-MICHEL", "GAYOL VIVIEN", "SARRAMAIGNA PIERRE"],
-                "Licence / Ligue": ["1375415 (NAQ)", "2418178 (NAO)", "2501365 (NAQ)", "1874855 (NAD)", "1416271", "1135041"],
-            }
-            df_officiels = pd.DataFrame(officiels_data)
-            
+            officials_df_clean = pd.DataFrame(officials_data)
+            officials_df_clean = officials_df_clean[officials_df_clean['Nom Prénom'] != '']
             
     except Exception as e:
-        st.error(f"Erreur fatale lors de l'analyse du PDF : {e}")
-        return None, None, None
-        
-    return general_info, df_scores, df_joueurs, df_officiels
+        st.warning(f"Avertissement lors de l'extraction des officiels : {e}")
+
+    return officials_df_clean
+
+
+def extract_match_data(file_path):
+    """Fonction principale pour lire le PDF et extraire tous les blocs."""
+    
+    st.info("Démarrage de l'extraction des tableaux (peut prendre quelques secondes)...")
+    
+    # 1. Lecture de tous les tableaux (méthode STREAM pour les tableaux complexes)
+    try:
+        tables = camelot.read_pdf(
+            file_path, 
+            pages='all',
+            flavor='stream', 
+            edge_tol=500, # Tolérance d'alignement pour aider à la reconnaissance
+            row_tol=10
+        )
+        if not tables:
+            st.error("Aucun tableau n'a été détecté par Camelot. Le PDF est peut-être scanné ou dans un format inconnu.")
+            return None
+            
+        st.success(f"{len(tables)} tableaux détectés sur le document.")
+            
+    except Exception as e:
+        st.error(f"Erreur critique lors de la lecture du PDF : {e}")
+        return None
+
+    # 2. Extraction des différents blocs
+    final_result, start_time, end_time, total_duration, sets_df = extract_results_summary(tables)
+    players_df = extract_players_data(tables)
+    officials_df = extract_officials_data(tables)
+    
+    return {
+        'resultat_final': final_result,
+        'heure_debut': start_time,
+        'heure_fin': end_time,
+        'duree_totale': total_duration,
+        'sets': sets_df,
+        'joueurs': players_df,
+        'officiels': officials_df,
+    }
 
 # --- Application Streamlit ---
 
 st.set_page_config(
-    page_title="Analyse Feuille de Match FFvolley",
+    page_title="Extracteur de Feuilles de Match Volley (FFvolley)", 
     layout="wide"
 )
 
-st.title("🏐 Analyse Automatique de Feuille de Match FFvolley")
-st.markdown("---")
+st.title("🏐 Extracteur de Données FFvolley")
+st.markdown("Téléversez une feuille de match FFvolley (PDF) pour extraire automatiquement les résultats, la liste des joueurs et les officiels.")
 
-# --- 1. Importer la Feuille de Match (PDF) ---
-st.header("1. Importer la Feuille de Match (PDF)")
+# Zone de téléversement
 uploaded_file = st.file_uploader(
-    "Veuillez choisir un fichier PDF de feuille de match FFvolley (scan ou rempli).",
-    type="pdf",
-    accept_multiple_files=False
+    "Veuillez choisir votre fichier PDF de feuille de match.", 
+    type=["pdf"]
 )
 
 if uploaded_file is not None:
-    st.success(f"Fichier téléchargé : **{uploaded_file.name}**")
-    
-    # Enregistrer le fichier temporairement pour l'analyse
-    # L'erreur de NameError est corrigée par l'import 'tempfile'
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+    # 1. Sauvegarder le fichier temporairement
+    # Streamlit gère le fichier en mémoire. Camelot a besoin d'un chemin sur le disque.
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
         tmp_file.write(uploaded_file.getvalue())
         tmp_path = tmp_file.name
-        
-    if st.button("🚀 Lancer l'Analyse des Données", type="primary"):
-        
-        # --- Lancement de l'Analyse ---
-        with st.spinner('Analyse du document en cours...'):
-            general_info, df_scores, df_joueurs, df_officiels = extract_all_data(tmp_path)
-            
-            # Nettoyage du fichier temporaire
-            os.unlink(tmp_path)
-            gc.collect() 
 
-        # --- 2. Affichage des Résultats ---
-        st.markdown("---")
-        st.header("2. Résultats de l'Extraction")
-        
-        # Le code d'extraction des joueurs/officiels est basé sur la structure du document doc2.pdf
-        st.warning("⚠️ **Rappel important** : L'extraction des joueurs et officiels est basée sur la structure du document *rempli* (doc2.pdf). Pour une adaptation à *n'importe quel* match, le code d'extraction de tableau doit être optimisé.")
+    try:
+        # 2. Exécuter l'extraction
+        data = extract_match_data(tmp_path)
 
-        if general_info:
-            st.subheader("🏆 Récapitulatif du Match")
+        if data:
+            st.header("✅ Données Extraites avec Succès")
             
-            col1, col2, col3 = st.columns(3)
+            # Affichage des Résultats
+            st.subheader("1. Résumé du Match")
             
-            with col1:
-                st.metric(label="Compétition", value=general_info.get("Competition", "N/A"))
-                st.metric(label="Match N°", value=general_info.get('Match N°', 'N/A'))
-            with col2:
-                st.metric(label="Date & Heure", value=general_info.get("Date & Heure", "N/A"))
-                st.metric(label="Durée Totale", value=general_info.get("Durée Totale", "N/A"))
-            with col3:
-                st.metric(label="Vainqueur", value=f"🏆 {general_info.get('Vainqueur', 'N/A')}", delta=general_info.get('Score Final', 'N/A'))
-            
-            st.info(f"Équipe A: **{general_info.get('Equipe A', 'N/A')}** vs Équipe B: **{general_info.get('Equipe B', 'N/A')}**")
-            
-            st.markdown("---")
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Vainqueur / Score", data['resultat_final'])
+            col2.metric("Début du match", data['heure_debut'])
+            col3.metric("Fin du match", data['heure_fin'])
+            col4.metric("Durée Totale", data['duree_totale'])
 
-
-        if df_scores is not None and not df_scores.empty:
-            st.subheader("📊 Scores Détaillés par Set (Extraction Brute)")
-            st.dataframe(df_scores, use_container_width=True, hide_index=True)
+            # Affichage des Sets
+            if not data['sets'].empty:
+                st.subheader("2. Scores Détaillés par Set")
+                st.dataframe(data['sets'], use_container_width=True, hide_index=True)
+            else:
+                st.warning("Avertissement : Les scores détaillés par set n'ont pas pu être extraits.")
             
-        else:
-            st.error("Échec de l'extraction du tableau des scores détaillés. Les coordonnées du tableau dans le PDF peuvent avoir changé ou le tableau est illisible.")
-            
-        
-        if df_joueurs is not None and df_officiels is not None:
-            st.markdown("---")
-            st.subheader("👥 Détail des Participants")
-            
-            tab_joueurs, tab_officiels = st.tabs(["Joueurs", "Officiels"])
-            
-            with tab_joueurs:
-                st.markdown("**Liste des joueurs**")
-                st.dataframe(df_joueurs, use_container_width=True, hide_index=True)
-
-            with tab_officiels:
-                st.markdown("**Officiels du match (Arbitres, Entraîneurs, Marqueur)**")
-                st.dataframe(df_officiels, use_container_width=True, hide_index=True)
+            # Affichage des Joueurs
+            if not data['joueurs'].empty:
+                st.subheader("3. Liste des Joueurs")
+                st.dataframe(data['joueurs'], use_container_width=True, hide_index=True)
                 
-        else:
-            st.error("Échec de la construction des tableaux Joueurs et Officiels.")
+                # Offrir l'option de téléchargement
+                csv_data = data['joueurs'].to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Télécharger la liste des joueurs (CSV)",
+                    data=csv_data,
+                    file_name='joueurs_volley_match.csv',
+                    mime='text/csv',
+                    key='download_players'
+                )
+            else:
+                st.warning("Avertissement : La liste des joueurs n'a pas pu être extraite.")
+
+            # Affichage des Officiels
+            if not data['officiels'].empty:
+                st.subheader("4. Officiels du Match")
+                st.dataframe(data['officiels'], use_container_width=True, hide_index=True)
+            else:
+                st.warning("Avertissement : La liste des officiels n'a pas pu être extraite.")
+            
+    finally:
+        # 3. Suppression du fichier temporaire après utilisation
+        if 'tmp_path' in locals() and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+st.sidebar.info("Application créée avec Python, Streamlit et la librairie Camelot (pour l'extraction PDF).")
