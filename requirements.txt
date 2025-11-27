@@ -1,6 +1,4 @@
 streamlit
-pdfplumber
+camelot-py
 pandas
-pypdfium2
-plotly
-Pillow
+opencv-python==4.9.0.80
