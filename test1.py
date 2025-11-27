@@ -43,7 +43,7 @@ def find_and_clean_table(tables, content_keyword, content_keyword_2=None):
 
 
 def extract_results_summary(tables):
-    """Extrait le tableau des RESULTATS et les données de score/durée."""
+    """Extrait le tableau des RESULTATS, les données de score/durée et gère les sets."""
     results_df_raw = find_and_clean_table(tables, 'Vainqueur')
     
     final_result, start_time, end_time, total_duration, sets_data = "Non trouvé", "Non trouvé", "Non trouvé", "Non trouvé", []
@@ -68,64 +68,72 @@ def extract_results_summary(tables):
             end_time = row.iloc[1].replace('Fin', '').strip()
             total_duration = row.iloc[2].replace('Durée', '').strip()
         
-        # Tenter d'extraire les scores par set
-        # On cherche le tableau des résultats détaillés par set (colonnes TRGP, Durée, PGRT)
+        # --- LOGIQUE D'EXTRACTION DES SETS AMÉLIORÉE ---
         
-        # Filtrer les lignes qui contiennent 'TRGP' (Tours Reçus Gagnés Perdus) pour définir le haut du tableau
+        # Filtrer les lignes qui contiennent 'TRGP' (Tours Reçus Gagnés Perdus) pour définir le haut du tableau des sets
         start_index = results_df_raw[results_df_raw.iloc[:, 0].str.contains('TRGP', na=False)].index.max()
         
         if start_index is not None:
             # Les lignes de scores sont juste après
             score_rows = results_df_raw.iloc[start_index+1:]
             
+            # Définir l'index des colonnes attendues pour l'extraction :
+            # Col 0: Points A (TRGP)
+            # Col 1: Durée / Set Numéro
+            # Col 2: Points B (PGRT)
+            
             for i, row in score_rows.iterrows():
-                # Le tableau est généralement structuré comme: Col A (Points), Col B (Score A, Durée, Set), Col C (Points B)
                 try:
-                    set_num = None
-                    duration = None
-                    score_a = None
-                    score_b = None
+                    set_num_found = None
+                    duration_found = "0" # Initialisation à 0
+                    score_a_found = 0    # Initialisation à 0
+                    score_b_found = 0    # Initialisation à 0
                     
-                    # On cherche le numéro de set et la durée dans la colonne centrale (index 1)
-                    col_b_parts = row.iloc[1].split()
+                    # 1. Extraction du Set Numéro et de la Durée (Colonne 1)
+                    col_b_text = row.iloc[1]
+                    col_b_parts = col_b_text.split()
+                    
                     for part in col_b_parts:
+                        # La durée est généralement marquée par un ' (ex: 36')
                         if "'" in part:
-                            duration = part
+                            duration_found = part.replace("'", "") + "'" # Assure un format cohérent
+                        # Le numéro de set est un chiffre entre 1 et 5
                         if part.isdigit() and len(part) < 2 and int(part) in [1, 2, 3, 4, 5]:
-                            set_num = int(part)
+                            set_num_found = int(part)
                             
-                    # Si on a le numéro de set et la durée, on peut essayer d'extraire les scores
-                    if set_num and duration:
-                        # Le score A est la valeur numérique la plus claire dans la colonne A
-                        match_a = re.search(r'\d+', row.iloc[0])
-                        if match_a: score_a = int(match_a.group(0))
+                    # 2. Extraction des Scores (Colonnes 0 et 2)
+                    # On cherche la valeur numérique la plus claire dans la colonne A (Points A)
+                    match_a = re.search(r'\d+', row.iloc[0])
+                    if match_a: score_a_found = int(match_a.group(0))
 
-                        # Le score B est la valeur numérique la plus claire dans la colonne C
-                        match_b = re.search(r'\d+', row.iloc[2])
-                        if match_b: score_b = int(match_b.group(0))
-                        
-                        if score_a is not None and score_b is not None:
-                             sets_data.append({
-                                'Set': set_num, 
-                                'Score': f"{score_a}-{score_b}", 
-                                'Durée': duration
-                            })
+                    # On cherche la valeur numérique la plus claire dans la colonne C (Points B)
+                    match_b = re.search(r'\d+', row.iloc[2])
+                    if match_b: score_b_found = int(match_b.group(0))
+                    
+                    # 3. Sauvegarde de la ligne si le numéro de set est trouvé
+                    if set_num_found is not None:
+                         sets_data.append({
+                            'Set': set_num_found, 
+                            'Score Équipe A (TRGP)': score_a_found, # Dataframe de sortie en colonnes séparées
+                            'Score Équipe B (PGRT)': score_b_found,
+                            'Durée': duration_found
+                        })
                             
                 except IndexError:
-                    # Fin du tableau
+                    # Sortir si l'index de colonne est hors limite
                     continue
         
     except Exception as e:
         # L'avertissement ici devrait déjà être suffisant pour indiquer qu'il y a eu un problème.
-        # Le RangeIndex with these indexers [nan] est probablement dû à une ligne de la table 
-        # qui est entièrement vide ou mal reconnue par Camelot et Pandas
         st.warning(f"Avertissement lors de l'extraction des résultats : {e}")
 
-    # FIX: Vérifier si sets_data est vide avant d'essayer de trier
+    # Vérifier si sets_data est vide avant d'essayer de trier
     if sets_data:
+        # Créer le DataFrame, trier par 'Set' et réinitialiser l'index
         sets_df = pd.DataFrame(sets_data).sort_values('Set').reset_index(drop=True)
     else:
-        sets_df = pd.DataFrame() # Retourne un DataFrame vide
+        # Retourne un DataFrame vide si aucune donnée n'a été trouvée
+        sets_df = pd.DataFrame(columns=['Set', 'Score Équipe A (TRGP)', 'Score Équipe B (PGRT)', 'Durée'])
         
     return final_result, start_time, end_time, total_duration, sets_df
 
@@ -196,7 +204,6 @@ def extract_officials_data(tables):
         officials_data = []
         
         # Identification des lignes pertinentes (Arbitres, Marqueur, R.Salle, etc.)
-        # On s'assure de chercher les rôles dans la colonne 0 et d'isoler les 3 colonnes principales (Fonction, Nom/Prénom, Licence)
         
         # Liste des rôles à rechercher
         roles = ['Arbitres', 'Marqueur', 'R.Salle', '1er', '2ème', 'Ter']
@@ -226,17 +233,13 @@ def extract_officials_data(tables):
                 license_info = row.iloc[2]
                 
                 # Décomposition de la colonne Fonction si elle contient plusieurs rôles
-                # Si 'Arbitres' est présent, on extrait les sous-rôles 1er, 2ème, Ter
-                if 'Arbitres' in function_text and ('1er' in function_text or '2ème' in function_text or 'Ter' in function_text):
-                    # Cas où les 3 rôles sont empilés dans une seule cellule (ex: Arbitres 1er 2ème Ter)
-                    # On va séparer chaque rôle potentiel
-                    potential_functions = []
-                    current_name = name
-                    current_license = license_info
+                # On cherche les lignes qui contiennent un nom ou une licence valide
+                if name.strip() or license_info.strip():
                     
-                    # On cherche les lignes qui contiennent un nom ou une licence valide
-                    if name.strip() or license_info.strip():
-                        # On cherche le rôle spécifique au début du texte
+                    potential_functions = []
+                    
+                    # Logique pour extraire les rôles "empilés"
+                    if 'Arbitres' in function_text:
                         if '1er' in function_text:
                             potential_functions.append('1er Arbitre')
                             function_text = function_text.replace('1er', '').strip()
@@ -246,37 +249,22 @@ def extract_officials_data(tables):
                         if 'Ter' in function_text:
                             potential_functions.append('3ème Arbitre/Ter')
                             function_text = function_text.replace('Ter', '').strip()
-                        
-                        # Si 'Arbitres' est le seul rôle restant, on le garde
-                        if function_text.strip() in ['Arbitres', '']:
-                            if not potential_functions and (name.strip() or license_info.strip()):
-                                # Si c'est juste la ligne d'en-tête "Arbitres", on ignore
-                                continue
-                            
-                        # Si plusieurs fonctions ont été trouvées, on les ajoute séparément avec les mêmes coordonnées
-                        if potential_functions:
-                            for func in potential_functions:
-                                officials_data.append({
-                                    'Fonction': func,
-                                    'Nom Prénom': current_name,
-                                    'Licence': current_license
-                                })
-                        else:
-                            # Ajout standard si ce n'est pas un cas empilé
+                    
+                    # Si des fonctions spécifiques ont été trouvées, on les ajoute
+                    if potential_functions:
+                        for func in potential_functions:
                             officials_data.append({
-                                'Fonction': function_text,
+                                'Fonction': func,
                                 'Nom Prénom': name,
                                 'Licence': license_info
                             })
-                    
-                elif name.strip() or license_info.strip():
-                    # Ajout standard (Marqueur, R.Salle, etc.)
-                    function = function_text.replace('Arbitres', '').strip()
-                    officials_data.append({
-                        'Fonction': function,
-                        'Nom Prénom': name,
-                        'Licence': license_info
-                    })
+                    elif function_text.strip() not in ['', 'Arbitres']:
+                        # Ajout standard (Marqueur, R.Salle, etc.)
+                        officials_data.append({
+                            'Fonction': function_text.replace('Arbitres', '').strip(),
+                            'Nom Prénom': name,
+                            'Licence': license_info
+                        })
             
             officials_df_clean = pd.DataFrame(officials_data)
             officials_df_clean = officials_df_clean[officials_df_clean['Nom Prénom'] != '']
@@ -312,6 +300,7 @@ def extract_match_data(file_path):
         return None
 
     # 2. Extraction des différents blocs
+    # Nous renvoyons maintenant les scores des sets dans des colonnes séparées (A et B)
     final_result, start_time, end_time, total_duration, sets_df = extract_results_summary(tables)
     players_df = extract_players_data(tables)
     officials_df = extract_officials_data(tables)
@@ -365,14 +354,25 @@ if uploaded_file is not None:
             col3.metric("Fin du match", data['heure_fin'])
             col4.metric("Durée Totale", data['duree_totale'])
 
-            # Affichage des Sets
+            # Affichage des Sets - C'est ici que votre DataFrame se trouve
             if not data['sets'].empty:
-                st.subheader("2. Scores Détaillés par Set")
+                st.subheader("2. Scores Détaillés par Set (DataFrame Sollicité)")
+                # Affichage du DataFrame de Sets
                 st.dataframe(data['sets'], use_container_width=True, hide_index=True)
+                
+                # Offrir l'option de téléchargement pour le DataFrame de Sets
+                csv_sets = data['sets'].to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Télécharger les scores par set (CSV)",
+                    data=csv_sets,
+                    file_name='scores_sets_volley.csv',
+                    mime='text/csv',
+                    key='download_sets'
+                )
             else:
                 st.warning("Avertissement : Les scores détaillés par set n'ont pas pu être extraits.")
             
-            # Affichage des Joueurs
+            # Affichage des Joueurs (Reste inchangé)
             if not data['joueurs'].empty:
                 st.subheader("3. Liste des Joueurs")
                 st.dataframe(data['joueurs'], use_container_width=True, hide_index=True)
@@ -389,7 +389,7 @@ if uploaded_file is not None:
             else:
                 st.warning("Avertissement : La liste des joueurs n'a pas pu être extraite.")
 
-            # Affichage des Officiels
+            # Affichage des Officiels (Reste inchangé)
             if not data['officiels'].empty:
                 st.subheader("4. Officiels du Match")
                 st.dataframe(data['officiels'], use_container_width=True, hide_index=True)
