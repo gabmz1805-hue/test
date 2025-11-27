@@ -179,38 +179,104 @@ def extract_players_data(tables):
 
 
 def extract_officials_data(tables):
-    """Extrait le tableau des officiels (Arbitres, Marqueur, etc.)."""
+    """Extrait le tableau des officiels (Arbitres, Marqueur, etc.) sous forme de DataFrame."""
+    
     # Recherche du tableau qui contient les mots-clés 'Arbitres' et 'Signature'
     officials_df_raw = find_and_clean_table(tables, 'Arbitres', 'Signature')
     officials_df_clean = pd.DataFrame()
     
     if officials_df_raw.empty:
+        # Tente une recherche alternative pour le bloc d'approbation si le tableau 'Signature' manque
+        officials_df_raw = find_and_clean_table(tables, 'Arbitres', 'APPROBATION')
+    
+    if officials_df_raw.empty:
         return officials_df_clean
     
     try:
-        # On cherche le bloc Officiels dans les premières colonnes (Fonction / Nom Prénom / Licence)
+        officials_data = []
         
-        # Identification des lignes pertinentes (Arbitres, Marqueur, R.Salle)
-        relevant_rows = officials_df_raw[officials_df_raw.iloc[:, 0].str.contains('Arbitres|Marqueur|R.Salle', na=False)].iloc[:, 0:3]
+        # Identification des lignes pertinentes (Arbitres, Marqueur, R.Salle, etc.)
+        # On s'assure de chercher les rôles dans la colonne 0 et d'isoler les 3 colonnes principales (Fonction, Nom/Prénom, Licence)
+        
+        # Liste des rôles à rechercher
+        roles = ['Arbitres', 'Marqueur', 'R.Salle', '1er', '2ème', 'Ter']
+        
+        # Chercher les lignes où la première colonne contient un de ces rôles
+        role_pattern = '|'.join(roles)
+        
+        # On cherche également les en-têtes "Nom Prénom" et "Licence" pour déterminer la zone
+        start_index = officials_df_raw[officials_df_raw.iloc[:, 1].str.contains('Nom Prénom|NOM PRENOM', na=False, case=False)].index.min()
+
+        if start_index is not None:
+            # On ne prend que les lignes suivantes
+            relevant_rows = officials_df_raw.iloc[start_index+1:].iloc[:, 0:3]
+        else:
+            # Sinon, on filtre sur la présence des mots-clés de rôle dans la première colonne sur tout le tableau brut
+            relevant_rows = officials_df_raw[officials_df_raw.iloc[:, 0].str.contains(role_pattern, na=False)]
+            # On limite aux trois premières colonnes
+            relevant_rows = relevant_rows.iloc[:, 0:3]
         
         if not relevant_rows.empty:
-            officials_data = []
             for i, row in relevant_rows.iterrows():
-                # La colonne 0 est la fonction (Ter, 2ème, Marqueur)
-                function = row.iloc[0]
+                # La colonne 0 est la fonction (Ter, 2ème, Marqueur) ou peut contenir plusieurs rôles
+                function_text = row.iloc[0]
                 # La colonne 1 est le nom/prénom
                 name = row.iloc[1]
                 # La colonne 2 est la Ligue/Licence
                 license_info = row.iloc[2]
                 
-                # Nettoyage des libellés de fonction/nom
-                function = function.replace('Arbitres', '').strip()
-                
-                officials_data.append({
-                    'Fonction': function,
-                    'Nom Prénom': name,
-                    'Licence': license_info
-                })
+                # Décomposition de la colonne Fonction si elle contient plusieurs rôles
+                # Si 'Arbitres' est présent, on extrait les sous-rôles 1er, 2ème, Ter
+                if 'Arbitres' in function_text and ('1er' in function_text or '2ème' in function_text or 'Ter' in function_text):
+                    # Cas où les 3 rôles sont empilés dans une seule cellule (ex: Arbitres 1er 2ème Ter)
+                    # On va séparer chaque rôle potentiel
+                    potential_functions = []
+                    current_name = name
+                    current_license = license_info
+                    
+                    # On cherche les lignes qui contiennent un nom ou une licence valide
+                    if name.strip() or license_info.strip():
+                        # On cherche le rôle spécifique au début du texte
+                        if '1er' in function_text:
+                            potential_functions.append('1er Arbitre')
+                            function_text = function_text.replace('1er', '').strip()
+                        if '2ème' in function_text:
+                            potential_functions.append('2ème Arbitre')
+                            function_text = function_text.replace('2ème', '').strip()
+                        if 'Ter' in function_text:
+                            potential_functions.append('3ème Arbitre/Ter')
+                            function_text = function_text.replace('Ter', '').strip()
+                        
+                        # Si 'Arbitres' est le seul rôle restant, on le garde
+                        if function_text.strip() in ['Arbitres', '']:
+                            if not potential_functions and (name.strip() or license_info.strip()):
+                                # Si c'est juste la ligne d'en-tête "Arbitres", on ignore
+                                continue
+                            
+                        # Si plusieurs fonctions ont été trouvées, on les ajoute séparément avec les mêmes coordonnées
+                        if potential_functions:
+                            for func in potential_functions:
+                                officials_data.append({
+                                    'Fonction': func,
+                                    'Nom Prénom': current_name,
+                                    'Licence': current_license
+                                })
+                        else:
+                            # Ajout standard si ce n'est pas un cas empilé
+                            officials_data.append({
+                                'Fonction': function_text,
+                                'Nom Prénom': name,
+                                'Licence': license_info
+                            })
+                    
+                elif name.strip() or license_info.strip():
+                    # Ajout standard (Marqueur, R.Salle, etc.)
+                    function = function_text.replace('Arbitres', '').strip()
+                    officials_data.append({
+                        'Fonction': function,
+                        'Nom Prénom': name,
+                        'Licence': license_info
+                    })
             
             officials_df_clean = pd.DataFrame(officials_data)
             officials_df_clean = officials_df_clean[officials_df_clean['Nom Prénom'] != '']
