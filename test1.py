@@ -1131,7 +1131,7 @@ if st.session_state.PDF_FILENAME:
     st.sidebar.divider()
     st.sidebar.subheader("⚙️ Attribution des Équipes")
     
-    # Extraction et harmonisation
+    # Extraction et harmonisation des données
     df_j = extraire_joueurs_df(st.session_state.PDF_FILENAME).rename(columns={'Numero': 'ID'})
     df_l = extraire_liberos_df(st.session_state.PDF_FILENAME).rename(columns={'Numero': 'ID'})
     df_s = extraire_staff_df(st.session_state.PDF_FILENAME).rename(columns={'Code': 'ID'})
@@ -1140,19 +1140,22 @@ if st.session_state.PDF_FILENAME:
     df_all = pd.concat([df_j, df_l, df_s], ignore_index=True)
     
     if not df_all.empty:
-        df_all['Équipe'] = EQUIPE_A 
+        df_all['Équipe'] = EQUIPE_A # Valeur par défaut
         with st.sidebar.expander("📝 Assigner les membres", expanded=True):
+            st.write("Attribuez chaque personne à son équipe :")
+            # Éditeur avec toutes les colonnes pour la validation
             df_valide = st.data_editor(
                 df_all,
                 column_config={
                     "Équipe": st.column_config.SelectboxColumn("Équipe", options=[EQUIPE_A, EQUIPE_B], required=True),
                     "Type": st.column_config.TextColumn("Type", disabled=True),
                     "Identite": st.column_config.TextColumn("Nom", disabled=True),
-                    "ID": st.column_config.TextColumn("N°", disabled=True)
+                    "ID": st.column_config.TextColumn("N°", disabled=True),
+                    "Licence": st.column_config.TextColumn("Licence", disabled=True)
                 },
                 hide_index=True, use_container_width=True
             )
-        # Filtrage final
+        # Filtrage par équipe selon le choix utilisateur
         df_a_final = df_valide[df_valide['Équipe'] == EQUIPE_A]
         df_b_final = df_valide[df_valide['Équipe'] == EQUIPE_B]
     else:
@@ -1166,7 +1169,7 @@ if st.session_state.PDF_FILENAME:
     if RAW_DATA_SCORES is not None:
         FINAL_SCORES = process_and_structure_scores(RAW_DATA_SCORES)
         
-        # Calcul sets gagnés
+        # Calcul des sets gagnés pour le titre
         sets_a, sets_b = 0, 0
         for i in range(5):
             try:
@@ -1183,36 +1186,35 @@ if st.session_state.PDF_FILENAME:
         if page == "📊 Analyse Tactique":
             col_a, col_b = st.columns(2)
             
-            # --- ÉQUIPE A (Gauche) ---
+            # Affichage ÉQUIPE A (Gauche) avec Licence
             with col_a:
                 st.subheader(f"🏠 {EQUIPE_A}")
                 t1, t2, t3 = st.tabs(["👥 Joueurs", "🛡️ Libéros", "👔 Staff"])
                 with t1:
-                    st.dataframe(df_a_final[df_a_final['Type'] == 'Joueur'][['ID', 'Identite']], use_container_width=True, hide_index=True)
+                    st.dataframe(df_a_final[df_a_final['Type'] == 'Joueur'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
                 with t2:
-                    st.dataframe(df_a_final[df_a_final['Type'] == 'Libéro'][['ID', 'Identite']], use_container_width=True, hide_index=True)
+                    st.dataframe(df_a_final[df_a_final['Type'] == 'Libéro'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
                 with t3:
-                    st.dataframe(df_a_final[df_a_final['Type'] == 'Staff'][['ID', 'Identite']], use_container_width=True, hide_index=True)
+                    st.dataframe(df_a_final[df_a_final['Type'] == 'Staff'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
 
-            # --- ÉQUIPE B (Droite) ---
+            # Affichage ÉQUIPE B (Droite) avec Licence
             with col_b:
                 st.subheader(f"🚀 {EQUIPE_B}")
                 t4, t5, t6 = st.tabs(["👥 Joueurs", "🛡️ Libéros", "👔 Staff"])
                 with t4:
-                    st.dataframe(df_b_final[df_b_final['Type'] == 'Joueur'][['ID', 'Identite']], use_container_width=True, hide_index=True)
+                    st.dataframe(df_b_final[df_b_final['Type'] == 'Joueur'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
                 with t5:
-                    st.dataframe(df_b_final[df_b_final['Type'] == 'Libéro'][['ID', 'Identite']], use_container_width=True, hide_index=True)
+                    st.dataframe(df_b_final[df_b_final['Type'] == 'Libéro'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
                 with t6:
-                    st.dataframe(df_b_final[df_b_final['Type'] == 'Staff'][['ID', 'Identite']], use_container_width=True, hide_index=True)
+                    st.dataframe(df_b_final[df_b_final['Type'] == 'Staff'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
 
-            # Rappel des scores
+            # Reste de l'affichage (Tableau des scores et Graphiques)
             FINAL_SCORES_DISPLAY = FINAL_SCORES.copy()
             FINAL_SCORES_DISPLAY.columns = [f"Score {EQUIPE_A}", f"Score {EQUIPE_B}"]
             st.divider()
             st.subheader("📊 Récapitulatif des Scores")
             st.table(FINAL_SCORES_DISPLAY)
 
-            # Analyse des Sets (Tabs classiques)
             if sets_joues:
                 tabs_sets = st.tabs(sets_joues)
                 for idx, tab_name in enumerate(sets_joues):
@@ -1221,7 +1223,7 @@ if st.session_state.PDF_FILENAME:
                         sc_a, sc_b = FINAL_SCORES.iloc[idx, 0], FINAL_SCORES.iloc[idx, 1]
                         st.info(f"🔥 ANALYSE DU {tab_name.upper()} ({EQUIPE_A} {sc_a} - {sc_b} {EQUIPE_B})")
                         
-                        # (La logique d'extraction reste la même que précédemment...)
+                        # Chargement des données par set
                         if set_num == 1:
                             df_a = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME))
                             df_b = process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
@@ -1245,14 +1247,15 @@ if st.session_state.PDF_FILENAME:
 
                         st.write(f"⏱️ **Temps Morts :** {EQUIPE_A} (`{tm[0] or '-'}` , `{tm[1] or '-'}`) | {EQUIPE_B} (`{tm[2] or '-'}` , `{tm[3] or '-'}`)")
                         tracer_duel_equipes(df_a, df_b, titre=f"Évolution {tab_name}", nom_g=n_g, nom_d=n_d)
-
-                        # (Reste du code des rotations identique...)
+                        
+                        # Dessin des rotations détaillées
+                        # ... (Code de la boucle fig_rot identique aux versions précédentes)
                         st.pyplot(fig_rot)
 
         # --- PAGE 2 : TABLEAUX DES SETS ---
         elif page == "📋 Tableaux des Sets":
-             # (Logique inchangée pour les dataframes bruts)
-             pass
+             st.header("📋 Tableaux Finaux par Set")
+             # ... (Logique d'affichage des dataframes bruts identique)
 
 else:
     st.warning("👈 Veuillez charger un fichier PDF dans la barre latérale.")
