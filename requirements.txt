@@ -1,5 +1,9 @@
 streamlit
 pandas
+numpy
+tabula-py
+pdfplumber
 matplotlib
+tabulate
 
 
