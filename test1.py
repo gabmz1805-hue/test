@@ -1084,8 +1084,6 @@ def calculer_sequences_precises(df_a, df_b, col_idx):
 # ======================================================================
 # NAVIGATION ENTRE LES PAGES
 # ======================================================================
-st.sidebar.divider()
-page = st.sidebar.radio("Navigation", ["📊 Analyse Graphique", "📋 Tableaux de Données"])
 
 # On définit une fonction pour afficher les tableaux sur la nouvelle page
 def afficher_page_tableaux(sets_joues, PDF_FILENAME, EQUIPE_A, EQUIPE_B):
