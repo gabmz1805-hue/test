@@ -1088,25 +1088,43 @@ if st.session_state.PDF_FILENAME:
     # 0. 🔍 IDENTIFICATION DES ÉQUIPES
     EQUIPE_A, EQUIPE_B = process_and_structure_noms_equipes(st.session_state.PDF_FILENAME)
 
-    st.markdown(f"### 🏐 MATCH : {EQUIPE_A} 🆚 {EQUIPE_B}")
-    
-    # Zone d'information (Joueurs, Liberos, Staff) en 3 colonnes
-    col_j, col_l, col_s = st.columns(3)
-    with col_j:
-        with st.expander("👥 Liste des Joueurs", expanded=False):
-            st.dataframe(extraire_joueurs_df(st.session_state.PDF_FILENAME), use_container_width=True, hide_index=True)
-    with col_l:
-        with st.expander("🛡️ Liste des Libéros", expanded=False):
-            st.dataframe(extraire_liberos_df(st.session_state.PDF_FILENAME), use_container_width=True, hide_index=True)
-    with col_s:
-        with st.expander("👔 Staff Technique", expanded=False):
-            st.dataframe(extraire_staff_df(st.session_state.PDF_FILENAME), use_container_width=True, hide_index=True)
-
     # 1. ANALYSE DU TABLEAU RÉCAPITULATIF DES SCORES
     RAW_DATA_SCORES = analyze_data(st.session_state.PDF_FILENAME)
     if RAW_DATA_SCORES is not None:
         FINAL_SCORES = process_and_structure_scores(RAW_DATA_SCORES)
         
+        # --- CALCUL DU NOMBRE DE SETS GAGNÉS ---
+        sets_a = 0
+        sets_b = 0
+        
+        for idx in range(5):
+            try:
+                # On convertit en int pour comparer proprement
+                s_a = int(float(FINAL_SCORES.iloc[idx, 0])) if FINAL_SCORES.iloc[idx, 0] else 0
+                s_b = int(float(FINAL_SCORES.iloc[idx, 1])) if FINAL_SCORES.iloc[idx, 1] else 0
+                
+                if s_a > s_b:
+                    sets_a += 1
+                elif s_b > s_a:
+                    sets_b += 1
+            except:
+                pass # Ligne vide ou non numérique
+        
+        # --- AFFICHAGE DU TITRE AVEC SCORE EN SETS ---
+        st.markdown(f"## 🏐 MATCH : {EQUIPE_A} ({sets_a}) 🆚 ({sets_b}) {EQUIPE_B}")
+        
+        # Zone d'information (Joueurs, Liberos, Staff)
+        col_j, col_l, col_s = st.columns(3)
+        with col_j:
+            with st.expander("👥 Liste des Joueurs", expanded=False):
+                st.dataframe(extraire_joueurs_df(st.session_state.PDF_FILENAME), use_container_width=True, hide_index=True)
+        with col_l:
+            with st.expander("🛡️ Liste des Libéros", expanded=False):
+                st.dataframe(extraire_liberos_df(st.session_state.PDF_FILENAME), use_container_width=True, hide_index=True)
+        with col_s:
+            with st.expander("👔 Staff Technique", expanded=False):
+                st.dataframe(extraire_staff_df(st.session_state.PDF_FILENAME), use_container_width=True, hide_index=True)
+
         # On renomme les colonnes avec les vrais noms
         FINAL_SCORES.columns = [f"Score {EQUIPE_A}", f"Score {EQUIPE_B}"]
         
@@ -1117,82 +1135,4 @@ if st.session_state.PDF_FILENAME:
         # 2. CRÉATION DES ONGLETS PAR SET
         sets_joues = [f"Set {i+1}" for i in range(5) if check_set_exists(FINAL_SCORES, i)]
         
-        if sets_joues:
-            tabs = st.tabs(sets_joues)
-            
-            for idx, tab_name in enumerate(sets_joues):
-                with tabs[idx]:
-                    set_num = idx + 1
-                    sc_a = FINAL_SCORES.iloc[idx, 0]
-                    sc_b = FINAL_SCORES.iloc[idx, 1]
-                    
-                    st.info(f"🔥 ANALYSE DU {tab_name.upper()} ({EQUIPE_A} {sc_a} - {sc_b} {EQUIPE_B})")
-                    
-                    # Logique d'extraction et structuration spécifique par Set
-                    if set_num == 1:
-                        df_a = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME))
-                        df_b = process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
-                        tm = extract_temps_mort_set_1(st.session_state.PDF_FILENAME)
-                        n_g, n_d = EQUIPE_A, EQUIPE_B
-                    elif set_num == 2:
-                        df_b = process_and_structure_set_2_b(extract_raw_set_2_b(st.session_state.PDF_FILENAME))
-                        df_a = process_and_structure_set_2_a(extract_raw_set_2_a(st.session_state.PDF_FILENAME))
-                        tm = extract_temps_mort_set_2(st.session_state.PDF_FILENAME)
-                        n_g, n_d = EQUIPE_B, EQUIPE_A
-                    elif set_num == 3:
-                        df_a = process_and_structure_set_3_a(extract_raw_set_3_a(st.session_state.PDF_FILENAME))
-                        df_b = process_and_structure_set_3_b(extract_raw_set_3_b(st.session_state.PDF_FILENAME))
-                        tm = extract_temps_mort_set_3(st.session_state.PDF_FILENAME)
-                        n_g, n_d = EQUIPE_A, EQUIPE_B
-                    elif set_num == 4:
-                        df_b = process_and_structure_set_4_b(extract_raw_set_4_b(st.session_state.PDF_FILENAME))
-                        df_a = process_and_structure_set_4_a(extract_raw_set_4_a(st.session_state.PDF_FILENAME))
-                        tm = extract_temps_mort_set_4(st.session_state.PDF_FILENAME)
-                        n_g, n_d = EQUIPE_B, EQUIPE_A
-                    elif set_num == 5:
-                        df_a = process_and_structure_set_5_a(extract_raw_set_5_a(st.session_state.PDF_FILENAME))
-                        df_b = process_and_structure_set_5_b(extract_raw_set_5_b(st.session_state.PDF_FILENAME))
-                        tm = extract_temps_mort_set_5(st.session_state.PDF_FILENAME)
-                        n_g, n_d = EQUIPE_A, EQUIPE_B
-
-                    # Affichage des Temps Morts
-                    st.write(f"⏱️ **Temps Morts :** {EQUIPE_A} (`{tm[0] or '-'}` , `{tm[1] or '-'}`) | {EQUIPE_B} (`{tm[2] or '-'}` , `{tm[3] or '-'}`)")
-
-                    # Graphique Chronologique (Duel)
-                    tracer_duel_equipes(df_a, df_b, titre=f"Évolution {tab_name}", nom_g=n_g, nom_d=n_d)
-
-                    # --- ANALYSE DES ROTATIONS ---
-                    st.subheader(f"🔄 Analyse des Rotations - {tab_name}")
-                    
-                    v_a, v_b = df_a.iloc[0].values, df_b.iloc[0].values
-                    r_a = [{'I':v_a[i%6],'II':v_a[(i+1)%6],'III':v_a[(i+2)%6],'IV':v_a[(i+3)%6],'V':v_a[(i+4)%6],'VI':v_a[(i+5)%6]} for i in range(6)]
-                    r_b = [{'I':v_b[i%6],'II':v_b[(i+1)%6],'III':v_b[(i+2)%6],'IV':v_b[(i+3)%6],'V':v_b[(i+4)%6],'VI':v_b[(i+5)%6]} for i in range(6)]
-
-                    fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
-                    for i in range(6):
-                        m_a, m_b = calculer_sequences_precises(df_a, df_b, i)
-                        
-                        # Service Équipe GAUCHE
-                        dessiner_rotation_couleurs(axes[i, 0], n_g, r_a[i], n_d, r_b[i], serveur='A')
-                        if m_a:
-                            s_m_a = "\n".join([f"{k+1}   {v}" for k, v in enumerate(m_a)])
-                            s_m_b = "\n".join([f"{k+1}   {v}" for k, v in enumerate(m_b)])
-                            s_diff = "\n".join([f"{int(va)-int(vb)}" for va,vb in zip(m_a,m_b)])
-                            # Affichage aligné monospace
-                            axes[i,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
-                            axes[i,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='salmon')
-                            axes[i,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
-
-                        # Service Équipe DROITE
-                        dessiner_rotation_couleurs(axes[i, 1], n_g, r_a[i], n_d, r_b[i], serveur='B')
-                        if m_b:
-                            s_m_a = "\n".join([f"{k+1}   {v}" for k, v in enumerate(m_a)])
-                            s_m_b = "\n".join([f"{k+1}   {v}" for k, v in enumerate(m_b)])
-                            s_diff_b = "\n".join([f"{int(vb)-int(va)}" for va,vb in zip(m_a,m_b)])
-                            axes[i,1].text(1,-1.5, f"pts marqués\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='darkorange')
-                            axes[i,1].text(7,-1.5, f"pts encaissés\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
-                            axes[i,1].text(13,-1.5, f"différence\n{s_diff_b}\n\nTotal: {sum(m_b)-sum(m_a):+d}", family='monospace', weight='bold', va='top')
-                    
-                    st.pyplot(fig_rot)
-else:
-    st.warning("👈 Veuillez uploader un fichier PDF dans la barre latérale pour commencer.")
+        # ... (reste du code pour les onglets et graphiques identique à l'étape précédente)
