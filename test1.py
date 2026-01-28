@@ -1091,16 +1091,23 @@ if st.session_state.PDF_FILENAME:
     # Affichage de l'en-tête de match
     st.markdown(f"### 🏐 MATCH : {EQUIPE_A} 🆚 {EQUIPE_B}")
     
-    # Zone d'information (Joueurs, Staff) dans des colonnes extensibles
-    col_j, col_s = st.columns(2)
+    # Zone d'information (Joueurs, Liberos, Staff)
+    col_j, col_l, col_s = st.columns(3) # On crée 3 colonnes au lieu de 2
+    
     with col_j:
-        with st.expander("👥 Liste des Joueurs & Libéros", expanded=False):
+        with st.expander("👥 Liste des Joueurs", expanded=False):
             df_joueurs = extraire_joueurs_df(st.session_state.PDF_FILENAME)
+            st.dataframe(df_joueurs, use_container_width=True, hide_index=True)
+
+    with col_l:
+        with st.expander("🛡️ Liste des Libéros", expanded=False):
             df_liberos = extraire_liberos_df(st.session_state.PDF_FILENAME)
-            st.dataframe(pd.concat([df_joueurs, df_liberos]), use_container_width=True)
+            st.dataframe(df_liberos, use_container_width=True, hide_index=True)
+
     with col_s:
         with st.expander("👔 Staff Technique", expanded=False):
-            st.dataframe(extraire_staff_df(st.session_state.PDF_FILENAME), use_container_width=True)
+            df_staff = extraire_staff_df(st.session_state.PDF_FILENAME)
+            st.dataframe(df_staff, use_container_width=True, hide_index=True)
 
     # 1. ANALYSE DU TABLEAU RÉCAPITULATIF DES SCORES
     RAW_DATA_SCORES = analyze_data(st.session_state.PDF_FILENAME)
