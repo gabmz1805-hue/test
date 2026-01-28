@@ -857,6 +857,81 @@ def process_and_structure_scores(raw_df_data: pd.DataFrame) -> pd.DataFrame:
     return df_structured
 
 # ======================================================================
+# FONCTION Extraction brute Nom équipe
+# ======================================================================
+
+def extract_raw_nom_equipe(pdf_path):
+    """
+    Extrait uniquement les tableaux situés dans le premier quart supérieur
+    de toutes les pages du PDF.
+    Format Area : [top, left, bottom, right]
+    """
+    # Zone : du haut (0) jusqu'à 25% de la page (210) sur toute la largeur (500+)
+    zone_quart_haut = [0, 0, 210, 600]
+
+    try:
+        liste_tables = tabula.read_pdf(
+            pdf_path,
+            pages='all',
+            area=zone_quart_haut,
+            multiple_tables=True,
+            pandas_options={'header': None}
+        )
+        return liste_tables
+    except Exception as e:
+        # Affichage de l'erreur directement dans l'application Streamlit
+        st.error(f"❌ Erreur lors de l'extraction du quart supérieur : {e}")
+        return None
+
+# ======================================================================
+# FONCTION Structure Nom équipe
+# ======================================================================
+
+def process_and_structure_noms_equipes(pdf_path):
+    """
+    Récupère et nettoie les noms des équipes A et B.
+    Logique pour Équipe A : supprime les 2 premiers caractères
+    et tout ce qui suit le mot 'Début'.
+    """
+    tables = extract_raw_nom_equipe(pdf_path)
+
+    equipe_a = "Équipe A"
+    equipe_b = "Équipe B"
+
+    if tables and len(tables) > 0:
+        df = tables[0]
+        try:
+            # Vérification que le DataFrame a assez de lignes/colonnes
+            if df.shape[0] > 4 and df.shape[1] > 2:
+                # Récupération brute des cases R4 C1 et R4 C2
+                raw_a = str(df.iloc[4, 1]).replace('\r', ' ').strip()
+                raw_b = str(df.iloc[4, 2]).replace('\r', ' ').strip()
+
+                # --- NETTOYAGE ÉQUIPE A & B ---
+                # 1. Supprimer les 2 premiers caractères (souvent "A " ou "B ")
+                clean_a = raw_a[2:] if len(raw_a) > 2 else raw_a
+                clean_b = raw_b[2:] if len(raw_b) > 2 else raw_b
+
+                # 2. Supprimer à partir du mot "Début"
+                if "Début" in clean_a:
+                    clean_a = clean_a.split("Début")[0]
+
+                if "Début" in clean_b:
+                    clean_b = clean_b.split("Début")[0]
+
+                equipe_a = clean_a.strip()
+                equipe_b = clean_b.strip()
+
+            # Sécurités si le résultat est vide ou invalide
+            if not equipe_a or equipe_a.lower() == "nan": equipe_a = "Équipe A"
+            if not equipe_b or equipe_b.lower() == "nan": equipe_b = "Équipe B"
+
+        except Exception as e:
+            st.warning(f"⚠️ Erreur lors du nettoyage des noms d'équipes : {e}")
+
+    return equipe_a, equipe_b
+
+# ======================================================================
 # FONCTION Graph Set - Duel Chronologique
 # ======================================================================
 
