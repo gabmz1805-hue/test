@@ -1,5 +1,5 @@
 streamlit
-camelot-py
 pandas
-opencv-python-headless
+matplotlib
+
 
