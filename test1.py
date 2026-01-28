@@ -856,80 +856,6 @@ def process_and_structure_scores(raw_df_data: pd.DataFrame) -> pd.DataFrame:
     st.toast("✅ Scores structurés avec succès.")
     return df_structured
 
-# ======================================================================
-# FONCTION Extraction brute Nom équipe
-# ======================================================================
-
-def extract_raw_nom_equipe(pdf_path):
-    """
-    Extrait uniquement les tableaux situés dans le premier quart supérieur
-    de toutes les pages du PDF.
-    Format Area : [top, left, bottom, right]
-    """
-    # Zone : du haut (0) jusqu'à 25% de la page (210) sur toute la largeur (500+)
-    zone_quart_haut = [0, 0, 210, 600]
-
-    try:
-        liste_tables = tabula.read_pdf(
-            pdf_path,
-            pages='all',
-            area=zone_quart_haut,
-            multiple_tables=True,
-            pandas_options={'header': None}
-        )
-        return liste_tables
-    except Exception as e:
-        # Affichage de l'erreur directement dans l'application Streamlit
-        st.error(f"❌ Erreur lors de l'extraction du quart supérieur : {e}")
-        return None
-
-# ======================================================================
-# FONCTION Structure Nom équipe
-# ======================================================================
-
-def process_and_structure_noms_equipes(pdf_path):
-    """
-    Récupère et nettoie les noms des équipes A et B.
-    Logique pour Équipe A : supprime les 2 premiers caractères
-    et tout ce qui suit le mot 'Début'.
-    """
-    tables = extract_raw_nom_equipe(pdf_path)
-
-    equipe_a = "Équipe A"
-    equipe_b = "Équipe B"
-
-    if tables and len(tables) > 0:
-        df = tables[0]
-        try:
-            # Vérification que le DataFrame a assez de lignes/colonnes
-            if df.shape[0] > 4 and df.shape[1] > 2:
-                # Récupération brute des cases R4 C1 et R4 C2
-                raw_a = str(df.iloc[4, 1]).replace('\r', ' ').strip()
-                raw_b = str(df.iloc[4, 2]).replace('\r', ' ').strip()
-
-                # --- NETTOYAGE ÉQUIPE A & B ---
-                # 1. Supprimer les 2 premiers caractères (souvent "A " ou "B ")
-                clean_a = raw_a[2:] if len(raw_a) > 2 else raw_a
-                clean_b = raw_b[2:] if len(raw_b) > 2 else raw_b
-
-                # 2. Supprimer à partir du mot "Début"
-                if "Début" in clean_a:
-                    clean_a = clean_a.split("Début")[0]
-
-                if "Début" in clean_b:
-                    clean_b = clean_b.split("Début")[0]
-
-                equipe_a = clean_a.strip()
-                equipe_b = clean_b.strip()
-
-            # Sécurités si le résultat est vide ou invalide
-            if not equipe_a or equipe_a.lower() == "nan": equipe_a = "Équipe A"
-            if not equipe_b or equipe_b.lower() == "nan": equipe_b = "Équipe B"
-
-        except Exception as e:
-            st.warning(f"⚠️ Erreur lors du nettoyage des noms d'équipes : {e}")
-
-    return equipe_a, equipe_b
 
 # ======================================================================
 # FONCTION Graph Set - Duel Chronologique
@@ -1005,89 +931,155 @@ def tracer_duel_equipes(df_g, df_d, titre="Duel", nom_g="Équipe A", nom_d="Équ
     plt.subplots_adjust(bottom=0.2)
 
     st.pyplot(fig) # Affichage Streamlit
+# ======================================================================
+# FONCTION Check set - Vérifie si un set a été joué
+# ======================================================================
+def check_set_exists(df_scores, row_idx):
+    """Vérifie si un set a été joué via le tableau récapitulatif des scores."""
+    try:
+        if df_scores is None or row_idx >= len(df_scores):
+            return False
+        val = str(df_scores.iloc[row_idx, 0]).upper().strip()
+        # On valide que la case contient un score réel
+        return val != 'NAN' and val != '' and val != 'NONE'
+    except:
+        return False
 
 # ======================================================================
-# FONCTION Dessin Rotation (Couleurs)
+# FONCTION Extraction brute et Structure Nom équipe
 # ======================================================================
+def extract_raw_nom_equipe(pdf_path):
+    """Extrait les tableaux du quart supérieur pour identifier les noms."""
+    zone_quart_haut = [0, 0, 210, 600]
+    try:
+        liste_tables = tabula.read_pdf(
+            pdf_path,
+            pages='all',
+            area=zone_quart_haut,
+            multiple_tables=True,
+            pandas_options={'header': None}
+        )
+        return liste_tables
+    except Exception as e:
+        st.error(f"❌ Erreur lors de l'extraction de l'en-tête : {e}")
+        return None
 
+def process_and_structure_noms_equipes(pdf_path):
+    """Récupère et nettoie les noms des équipes A et B."""
+    tables = extract_raw_nom_equipe(pdf_path)
+    equipe_a, equipe_b = "Équipe A", "Équipe B"
+
+    if tables and len(tables) > 0:
+        df = tables[0]
+        try:
+            # Récupération et nettoyage (enlève les 2 premiers caractères et "Début")
+            raw_a = str(df.iloc[4, 1]).replace('\r', ' ').strip()
+            raw_b = str(df.iloc[4, 2]).replace('\r', ' ').strip()
+            
+            equipe_a = raw_a[2:].split("Début")[0].strip()
+            equipe_b = raw_b[2:].split("Début")[0].strip()
+        except:
+            pass
+    return (equipe_a or "Équipe A"), (equipe_b or "Équipe B")
+
+# ======================================================================
+# FONCTIONS D'EXTRACTION DES JOUEURS, LIBEROS ET STAFF
+# ======================================================================
+def extraire_joueurs_df(pdf_path):
+    """Extrait la liste des joueurs avant la section LIBEROS."""
+    motif = re.compile(r'(\d{2})\s+([A-ZÀ-ÿ\s\-]+?)\s+(\d{5,7})')
+    joueurs_data = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            texte = "".join([page.extract_text() for page in pdf.pages])
+            zone = texte.split("LIBEROS")[0] if "LIBEROS" in texte else texte
+            matches = motif.findall(zone)
+            for num, identite, licence in matches:
+                joueurs_data.append({"Numero": num, "Identite": identite.strip(), "Licence": licence})
+        return pd.DataFrame(joueurs_data).drop_duplicates(subset=['Licence'])
+    except:
+        return pd.DataFrame(columns=["Numero", "Identite", "Licence"])
+
+def extraire_liberos_df(pdf_path):
+    """Extrait les liberos entre les sections LIBEROS et Arbitres."""
+    motif = re.compile(r'(\d{2})\s+([A-ZÀ-ÿ\s\-]+?)\s+(\d{5,7})')
+    liberos_data = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            texte = "".join([page.extract_text() for page in pdf.pages])
+            if "LIBEROS" in texte:
+                apres = texte.split("LIBEROS")[1]
+                zone = apres.split("Arbitres")[0] if "Arbitres" in apres else apres
+                matches = motif.findall(zone)
+                for num, identite, licence in matches:
+                    liberos_data.append({"Numero": num, "Identite": identite.strip(), "Licence": licence})
+        return pd.DataFrame(liberos_data).drop_duplicates(subset=['Licence'])
+    except:
+        return pd.DataFrame(columns=["Numero", "Identite", "Licence"])
+
+def extraire_staff_df(pdf_path):
+    """Extrait le staff (EA, EB, EC) après la section Arbitres."""
+    motif_staff = re.compile(r'(E[ABC])\s+([A-ZÀ-ÿ\s\-]+?)\s+(\d{5,7})')
+    staff_data = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            texte = "".join([page.extract_text() for page in pdf.pages])
+            if "Arbitres" in texte:
+                zone = texte.split("Arbitres")[1]
+                matches = motif_staff.findall(zone)
+                for code, identite, licence in matches:
+                    staff_data.append({"Code": code, "Identite": identite.strip(), "Licence": licence})
+        return pd.DataFrame(staff_data).drop_duplicates(subset=['Licence'])
+    except:
+        return pd.DataFrame(columns=["Code", "Identite", "Licence"])
+
+# ======================================================================
+# FONCTIONS GRAPHIQUES ET CALCULS
+# ======================================================================
 def dessiner_rotation_couleurs(ax, nom_a, pos_a, nom_b, pos_b, serveur='A'):
-    """Dessine le terrain et la position des joueurs."""
+    """Dessine le terrain avec les positions des joueurs."""
     ax.add_patch(patches.Rectangle((0, 0), 18, 9, linewidth=2, edgecolor='black', facecolor='#fafafa'))
     ax.plot([9, 9], [0, 9], color='black', linewidth=3) # Filet
-
+    
     color_a, color_b = 'royalblue', 'darkorange'
-
-    coords_a = {'IV': (7.5, 7.5), 'III': (7.5, 4.5), 'II': (7.5, 1.5),
-                'V':  (3.0, 7.5), 'VI':  (3.0, 4.5), 'I':  (3.0, 1.5)}
-    coords_b = {'II': (10.5, 7.5), 'III': (10.5, 4.5), 'IV': (10.5, 1.5),
-                'I':  (15.0, 7.5), 'VI':  (15.0, 4.5), 'V':  (15.0, 1.5)}
+    coords_a = {'IV': (7.5, 7.5), 'III': (7.5, 4.5), 'II': (7.5, 1.5), 'V': (3.0, 7.5), 'VI': (3.0, 4.5), 'I': (3.0, 1.5)}
+    coords_b = {'II': (10.5, 7.5), 'III': (10.5, 4.5), 'IV': (10.5, 1.5), 'I': (15.0, 7.5), 'VI': (15.0, 4.5), 'V': (15.0, 1.5)}
 
     if serveur == 'A':
         ax.text(-1.5, 1.5, str(pos_a['I']), fontsize=22, weight='bold', color=color_a, ha='center')
-        for p, n in pos_b.items():
-            ax.text(coords_b[p][0], coords_b[p][1], str(n), fontsize=20, weight='bold', color=color_b, ha='center', va='center')
+        for p, n in pos_b.items(): ax.text(coords_b[p][0], coords_b[p][1], str(n), fontsize=20, weight='bold', color=color_b, ha='center', va='center')
         for p, n in pos_a.items():
             if p != 'I': ax.text(coords_a[p][0], coords_a[p][1], str(n), fontsize=20, weight='bold', color=color_a, ha='center', va='center')
     else:
         ax.text(19.5, 7.5, str(pos_b['I']), fontsize=22, weight='bold', color=color_b, ha='center')
-        for p, n in pos_a.items():
-            ax.text(coords_a[p][0], coords_a[p][1], str(n), fontsize=20, weight='bold', color=color_a, ha='center', va='center')
+        for p, n in pos_a.items(): ax.text(coords_a[p][0], coords_a[p][1], str(n), fontsize=20, weight='bold', color=color_a, ha='center', va='center')
         for p, n in pos_b.items():
             if p != 'I': ax.text(coords_b[p][0], coords_b[p][1], str(n), fontsize=20, weight='bold', color=color_b, ha='center', va='center')
+    ax.set_xlim(-3, 21); ax.set_ylim(-1, 10); ax.axis('off')
 
-    ax.set_xlim(-3, 21); ax.set_ylim(-1, 10); ax.set_aspect('equal'); ax.axis('off')
+def calculer_sequences_precises(df_a, df_b, col_idx):
+    """Calcule les gains réels en soustrayant le score précédent (chronologique)."""
+    def to_val(v):
+        if str(v).upper() == 'X' or pd.isna(v) or str(v).strip() == '': return None
+        try: return float(str(v).replace(',', '.'))
+        except: return None
 
-# ======================================================================
-# FONCTION Extraction Noms Équipes
-# ======================================================================
-
-def process_and_structure_noms_equipes(pdf_path):
-    """Extrait et nettoie les noms des équipes A et B depuis l'en-tête."""
-    tables = extract_raw_nom_equipe(pdf_path)
-    equipe_a, equipe_b = "Équipe A", "Équipe B"
-
-    if tables:
-        df = tables[0]
-        try:
-            raw_a = str(df.iloc[4, 1]).replace('\r', ' ').strip()
-            raw_b = str(df.iloc[4, 2]).replace('\r', ' ').strip()
-
-            # Nettoyage selon votre logique
-            clean_a = raw_a[2:].split("Début")[0].strip()
-            clean_b = raw_b[2:].split("Début")[0].strip()
-
-            equipe_a = clean_a if clean_a and clean_a.lower() != "nan" else "Équipe A"
-            equipe_b = clean_b if clean_b and clean_b.lower() != "nan" else "Équipe B"
-        except: pass
-    return equipe_a, equipe_b
-
-# ======================================================================
-# FONCTION Extraction Listes (Joueurs, Staff)
-# ======================================================================
-
-def extraire_entites_df(pdf_path, type_entite="joueurs"):
-    """Fonction générique pour extraire joueurs, liberos ou staff via pdfplumber."""
-    motif = re.compile(r'(\d{2})\s+([A-ZÀ-ÿ\s\-]+?)\s+(\d{5,7})')
-    if type_entite == "staff":
-        motif = re.compile(r'(E[ABC])\s+([A-ZÀ-ÿ\s\-]+?)\s+(\d{5,7})')
-
-    data = []
-    try:
-        with pdfplumber.open(pdf_path) as pdf:
-            texte = "".join([p.extract_text() for p in pdf.pages])
-            if type_entite == "joueurs":
-                zone = texte.split("LIBEROS")[0]
-            elif type_entite == "liberos":
-                zone = texte.split("LIBEROS")[1].split("Arbitres")[0]
+    pts_marques, pts_encaisses = [], []
+    for r in range(4, len(df_a)):
+        val_a, val_b = to_val(df_a.iloc[r, col_idx]), to_val(df_b.iloc[r, col_idx])
+        if val_a is not None or val_b is not None:
+            if col_idx == 0:
+                if r == 4: prev_a, prev_b = 0.0, 0.0
+                else: 
+                    prev_a = to_val(df_a.iloc[r-1, 5]) or 0.0
+                    prev_b = to_val(df_b.iloc[r-1, 5]) or 0.0
             else:
-                zone = texte.split("Arbitres")[1]
-
-            matches = motif.findall(zone)
-            for col1, identite, licence in matches:
-                data.append({"ID": col1, "Identite": identite.strip(), "Licence": licence})
-        return pd.DataFrame(data).drop_duplicates(subset=['Licence'])
-    except:
-        return pd.DataFrame()
+                prev_a = to_val(df_a.iloc[r, col_idx-1]) or 0.0
+                prev_b = to_val(df_b.iloc[r, col_idx-1]) or 0.0
+            
+            pts_marques.append(int(val_a - prev_a) if val_a is not None else 0)
+            pts_encaisses.append(int(val_b - prev_b) if val_b is not None else 0)
+    return pts_marques, pts_encaisses
 
   # ======================================================================
 # PILOTAGE PRINCIPAL DE L'APPLICATION
