@@ -1131,7 +1131,7 @@ if st.session_state.PDF_FILENAME:
     st.sidebar.divider()
     st.sidebar.subheader("⚙️ Attribution des Équipes")
     
-    # Extraction et harmonisation des données
+    # Extraction et harmonisation pour validation
     df_j = extraire_joueurs_df(st.session_state.PDF_FILENAME).rename(columns={'Numero': 'ID'})
     df_l = extraire_liberos_df(st.session_state.PDF_FILENAME).rename(columns={'Numero': 'ID'})
     df_s = extraire_staff_df(st.session_state.PDF_FILENAME).rename(columns={'Code': 'ID'})
@@ -1143,7 +1143,6 @@ if st.session_state.PDF_FILENAME:
         df_all['Équipe'] = EQUIPE_A # Valeur par défaut
         with st.sidebar.expander("📝 Assigner les membres", expanded=True):
             st.write("Attribuez chaque personne à son équipe :")
-            # Éditeur avec toutes les colonnes pour la validation
             df_valide = st.data_editor(
                 df_all,
                 column_config={
@@ -1155,7 +1154,6 @@ if st.session_state.PDF_FILENAME:
                 },
                 hide_index=True, use_container_width=True
             )
-        # Filtrage par équipe selon le choix utilisateur
         df_a_final = df_valide[df_valide['Équipe'] == EQUIPE_A]
         df_b_final = df_valide[df_valide['Équipe'] == EQUIPE_B]
     else:
@@ -1169,7 +1167,6 @@ if st.session_state.PDF_FILENAME:
     if RAW_DATA_SCORES is not None:
         FINAL_SCORES = process_and_structure_scores(RAW_DATA_SCORES)
         
-        # Calcul des sets gagnés pour le titre
         sets_a, sets_b = 0, 0
         for i in range(5):
             try:
@@ -1184,31 +1181,22 @@ if st.session_state.PDF_FILENAME:
 
         # --- PAGE 1 : ANALYSE TACTIQUE ---
         if page == "📊 Analyse Tactique":
-            col_a, col_b = st.columns(2)
+            col_left, col_right = st.columns(2)
             
-            # Affichage ÉQUIPE A (Gauche) avec Licence
-            with col_a:
+            with col_left:
                 st.subheader(f"🏠 {EQUIPE_A}")
-                t1, t2, t3 = st.tabs(["👥 Joueurs", "🛡️ Libéros", "👔 Staff"])
-                with t1:
-                    st.dataframe(df_a_final[df_a_final['Type'] == 'Joueur'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-                with t2:
-                    st.dataframe(df_a_final[df_a_final['Type'] == 'Libéro'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-                with t3:
-                    st.dataframe(df_a_final[df_a_final['Type'] == 'Staff'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-
-            # Affichage ÉQUIPE B (Droite) avec Licence
-            with col_b:
+                ta1, ta2, ta3 = st.tabs(["👥 Joueurs", "🛡️ Libéros", "👔 Staff"])
+                with ta1: st.dataframe(df_a_final[df_a_final['Type'] == 'Joueur'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
+                with ta2: st.dataframe(df_a_final[df_a_final['Type'] == 'Libéro'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
+                with ta3: st.dataframe(df_a_final[df_a_final['Type'] == 'Staff'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
+            
+            with col_right:
                 st.subheader(f"🚀 {EQUIPE_B}")
-                t4, t5, t6 = st.tabs(["👥 Joueurs", "🛡️ Libéros", "👔 Staff"])
-                with t4:
-                    st.dataframe(df_b_final[df_b_final['Type'] == 'Joueur'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-                with t5:
-                    st.dataframe(df_b_final[df_b_final['Type'] == 'Libéro'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-                with t6:
-                    st.dataframe(df_b_final[df_b_final['Type'] == 'Staff'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
+                tb1, tb2, tb3 = st.tabs(["👥 Joueurs", "🛡️ Libéros", "👔 Staff"])
+                with tb1: st.dataframe(df_b_final[df_b_final['Type'] == 'Joueur'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
+                with tb2: st.dataframe(df_b_final[df_b_final['Type'] == 'Libéro'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
+                with tb3: st.dataframe(df_b_final[df_b_final['Type'] == 'Staff'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
 
-            # Reste de l'affichage (Tableau des scores et Graphiques)
             FINAL_SCORES_DISPLAY = FINAL_SCORES.copy()
             FINAL_SCORES_DISPLAY.columns = [f"Score {EQUIPE_A}", f"Score {EQUIPE_B}"]
             st.divider()
@@ -1223,39 +1211,65 @@ if st.session_state.PDF_FILENAME:
                         sc_a, sc_b = FINAL_SCORES.iloc[idx, 0], FINAL_SCORES.iloc[idx, 1]
                         st.info(f"🔥 ANALYSE DU {tab_name.upper()} ({EQUIPE_A} {sc_a} - {sc_b} {EQUIPE_B})")
                         
-                        # Chargement des données par set
                         if set_num == 1:
-                            df_a = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME))
-                            df_b = process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
+                            df_a, df_b = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME)), process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
                             tm, n_g, n_d = extract_temps_mort_set_1(st.session_state.PDF_FILENAME), EQUIPE_A, EQUIPE_B
                         elif set_num == 2:
-                            df_b = process_and_structure_set_2_b(extract_raw_set_2_b(st.session_state.PDF_FILENAME))
-                            df_a = process_and_structure_set_2_a(extract_raw_set_2_a(st.session_state.PDF_FILENAME))
+                            df_b, df_a = process_and_structure_set_2_b(extract_raw_set_2_b(st.session_state.PDF_FILENAME)), process_and_structure_set_2_a(extract_raw_set_2_a(st.session_state.PDF_FILENAME))
                             tm, n_g, n_d = extract_temps_mort_set_2(st.session_state.PDF_FILENAME), EQUIPE_B, EQUIPE_A
                         elif set_num == 3:
-                            df_a = process_and_structure_set_3_a(extract_raw_set_3_a(st.session_state.PDF_FILENAME))
-                            df_b = process_and_structure_set_3_b(extract_raw_set_3_b(st.session_state.PDF_FILENAME))
+                            df_a, df_b = process_and_structure_set_3_a(extract_raw_set_3_a(st.session_state.PDF_FILENAME)), process_and_structure_set_3_b(extract_raw_set_3_b(st.session_state.PDF_FILENAME))
                             tm, n_g, n_d = extract_temps_mort_set_3(st.session_state.PDF_FILENAME), EQUIPE_A, EQUIPE_B
                         elif set_num == 4:
-                            df_b = process_and_structure_set_4_b(extract_raw_set_4_b(st.session_state.PDF_FILENAME))
-                            df_a = process_and_structure_set_4_a(extract_raw_set_4_a(st.session_state.PDF_FILENAME))
+                            df_b, df_a = process_and_structure_set_4_b(extract_raw_set_4_b(st.session_state.PDF_FILENAME)), process_and_structure_set_4_a(extract_raw_set_4_a(st.session_state.PDF_FILENAME))
                             tm, n_g, n_d = extract_temps_mort_set_4(st.session_state.PDF_FILENAME), EQUIPE_B, EQUIPE_A
                         elif set_num == 5:
-                            df_a = process_and_structure_set_5_a(extract_raw_set_5_a(st.session_state.PDF_FILENAME))
-                            df_b = process_and_structure_set_5_b(extract_raw_set_5_b(st.session_state.PDF_FILENAME))
+                            df_a, df_b = process_and_structure_set_5_a(extract_raw_set_5_a(st.session_state.PDF_FILENAME)), process_and_structure_set_5_b(extract_raw_set_5_b(st.session_state.PDF_FILENAME))
                             tm, n_g, n_d = extract_temps_mort_set_5(st.session_state.PDF_FILENAME), EQUIPE_A, EQUIPE_B
 
                         st.write(f"⏱️ **Temps Morts :** {EQUIPE_A} (`{tm[0] or '-'}` , `{tm[1] or '-'}`) | {EQUIPE_B} (`{tm[2] or '-'}` , `{tm[3] or '-'}`)")
                         tracer_duel_equipes(df_a, df_b, titre=f"Évolution {tab_name}", nom_g=n_g, nom_d=n_d)
-                        
-                        # Dessin des rotations détaillées
-                        # ... (Code de la boucle fig_rot identique aux versions précédentes)
+
+                        # --- ANALYSE ROTATIONS ---
+                        v_a, v_b = df_a.iloc[0].values, df_b.iloc[0].values
+                        r_a = [{'I':v_a[i%6],'II':v_a[(i+1)%6],'III':v_a[(i+2)%6],'IV':v_a[(i+3)%6],'V':v_a[(i+4)%6],'VI':v_a[(i+5)%6]} for i in range(6)]
+                        r_b = [{'I':v_b[i%6],'II':v_b[(i+1)%6],'III':v_b[(i+2)%6],'IV':v_b[(i+3)%6],'V':v_b[(i+4)%6],'VI':v_b[(i+5)%6]} for i in range(6)]
+
+                        fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45)) # Crée fig_rot ici pour éviter NameError
+                        for i in range(6):
+                            m_a, m_b = calculer_sequences_precises(df_a, df_b, i)
+                            dessiner_rotation_couleurs(axes[i, 0], n_g, r_a[i], n_d, r_b[i], serveur='A')
+                            if m_a:
+                                s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
+                                s_diff = "\n".join([f"{int(va)-int(vb)}" for va,vb in zip(m_a,m_b)])
+                                axes[i,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
+                                axes[i,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='salmon')
+                                axes[i,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
+                            
+                            dessiner_rotation_couleurs(axes[i, 1], n_g, r_a[i], n_d, r_b[i], serveur='B')
+                            if m_b:
+                                s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
+                                s_diff_b = "\n".join([f"{int(vb)-int(va)}" for va,vb in zip(m_a,m_b)])
+                                axes[i,1].text(1,-1.5, f"pts marqués\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='darkorange')
+                                axes[i,1].text(7,-1.5, f"pts encaissés\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
+                                axes[i,1].text(13,-1.5, f"différence\n{s_diff_b}\n\nTotal: {sum(m_b)-sum(m_a):+d}", family='monospace', weight='bold', va='top')
                         st.pyplot(fig_rot)
 
         # --- PAGE 2 : TABLEAUX DES SETS ---
         elif page == "📋 Tableaux des Sets":
-             st.header("📋 Tableaux Finaux par Set")
-             # ... (Logique d'affichage des dataframes bruts identique)
-
+            st.header("📋 Tableaux Finaux par Set")
+            for idx, tab_name in enumerate(sets_joues):
+                set_num = idx + 1
+                st.subheader(f"📍 {tab_name}")
+                if set_num == 1: df_a, df_b = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME)), process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
+                elif set_num == 2: df_b, df_a = process_and_structure_set_2_b(extract_raw_set_2_b(st.session_state.PDF_FILENAME)), process_and_structure_set_2_a(extract_raw_set_2_a(st.session_state.PDF_FILENAME))
+                elif set_num == 3: df_a, df_b = process_and_structure_set_3_a(extract_raw_set_3_a(st.session_state.PDF_FILENAME)), process_and_structure_set_3_b(extract_raw_set_3_b(st.session_state.PDF_FILENAME))
+                elif set_num == 4: df_b, df_a = process_and_structure_set_4_b(extract_raw_set_4_b(st.session_state.PDF_FILENAME)), process_and_structure_set_4_a(extract_raw_set_4_a(st.session_state.PDF_FILENAME))
+                elif set_num == 5: df_a, df_b = process_and_structure_set_5_a(extract_raw_set_5_a(st.session_state.PDF_FILENAME)), process_and_structure_set_5_b(extract_raw_set_5_b(st.session_state.PDF_FILENAME))
+                
+                c1, c2 = st.columns(2)
+                with c1: st.caption(f"Équipe Gauche (Set {set_num})"); st.dataframe(df_a, use_container_width=True)
+                with c2: st.caption(f"Équipe Droite (Set {set_num})"); st.dataframe(df_b, use_container_width=True)
+                st.divider()
 else:
     st.warning("👈 Veuillez charger un fichier PDF dans la barre latérale.")
