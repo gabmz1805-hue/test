@@ -1086,12 +1086,11 @@ def calculer_sequences_precises(df_a, df_b, col_idx):
 # ======================================================================
 
 def creer_excel_flux(df_scores, *tableaux):
-    """Génère le contenu Excel en mémoire (optimisé pour Streamlit)."""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         for i, df in enumerate(tableaux):
-            # On vérifie si le set a été joué ET si le tableau n'est pas vide
-            if check_set_exists(df_scores, i) and not df.empty:
+            if df is not None and not df.empty:
+                # On nomme l'onglet Set_1, Set_2, etc.
                 df.to_excel(writer, sheet_name=f"Set_{i+1}", index=False)
     return output.getvalue()
 
@@ -1142,12 +1141,45 @@ if st.session_state.PDF_FILENAME:
     # --- 1. IDENTIFICATION GLOBALE & ATTRIBUTION ---
     EQUIPE_A, EQUIPE_B = process_and_structure_noms_equipes(st.session_state.PDF_FILENAME)
 
-    # --- 2. ANALYSE DES SCORES (Indispensable pour la suite) ---
+    st.sidebar.divider()
+    st.sidebar.subheader("⚙️ Attribution des Équipes")
+
+    # Extraction et harmonisation pour validation
+    df_j = extraire_joueurs_df(st.session_state.PDF_FILENAME).rename(columns={'Numero': 'ID'})
+    df_l = extraire_liberos_df(st.session_state.PDF_FILENAME).rename(columns={'Numero': 'ID'})
+    df_s = extraire_staff_df(st.session_state.PDF_FILENAME).rename(columns={'Code': 'ID'})
+
+    df_j['Type'], df_l['Type'], df_s['Type'] = 'Joueur', 'Libéro', 'Staff'
+    df_all = pd.concat([df_j, df_l, df_s], ignore_index=True)
+
+    if not df_all.empty:
+        df_all['Équipe'] = EQUIPE_A # Valeur par défaut
+        with st.sidebar.expander("📝 Assigner les membres", expanded=True):
+            st.write("Attribuez chaque personne à son équipe :")
+            df_valide = st.data_editor(
+                df_all,
+                column_config={
+                    "Équipe": st.column_config.SelectboxColumn("Équipe", options=[EQUIPE_A, EQUIPE_B], required=True),
+                    "Type": st.column_config.TextColumn("Type", disabled=True),
+                    "Identite": st.column_config.TextColumn("Nom", disabled=True),
+                    "ID": st.column_config.TextColumn("N°", disabled=True),
+                    "Licence": st.column_config.TextColumn("Licence", disabled=True)
+                },
+                hide_index=True, use_container_width=True
+            )
+        df_a_final = df_valide[df_valide['Équipe'] == EQUIPE_A]
+        df_b_final = df_valide[df_valide['Équipe'] == EQUIPE_B]
+    else:
+        df_a_final, df_b_final = pd.DataFrame(), pd.DataFrame()
+
+    # --- 2. NAVIGATION ---
+    page = st.sidebar.radio("📋 Navigation", ["📊 Analyse Tactique", "📋 Tableaux des Sets"])
+
+    # --- 3. ANALYSE DES SCORES & TITRE ---
     RAW_DATA_SCORES = analyze_data(st.session_state.PDF_FILENAME)
     if RAW_DATA_SCORES is not None:
         FINAL_SCORES = process_and_structure_scores(RAW_DATA_SCORES)
-        
-        # On calcule les sets gagnés ici pour l'affichage du titre
+
         sets_a, sets_b = 0, 0
         for i in range(5):
             try:
@@ -1156,54 +1188,6 @@ if st.session_state.PDF_FILENAME:
                 if s_a > s_b: sets_a += 1
                 elif s_b > s_a: sets_b += 1
             except: pass
-
-        # --- 3. SIDEBAR (Attribution, Navigation et Export) ---
-        st.sidebar.divider()
-        st.sidebar.subheader("⚙️ Attribution des Équipes")
-
-        # Extraction joueurs/staff pour l'éditeur
-        df_j = extraire_joueurs_df(st.session_state.PDF_FILENAME).rename(columns={'Numero': 'ID'})
-        df_l = extraire_liberos_df(st.session_state.PDF_FILENAME).rename(columns={'Numero': 'ID'})
-        df_s = extraire_staff_df(st.session_state.PDF_FILENAME).rename(columns={'Code': 'ID'})
-        df_j['Type'], df_l['Type'], df_s['Type'] = 'Joueur', 'Libéro', 'Staff'
-        df_all = pd.concat([df_j, df_l, df_s], ignore_index=True)
-
-        if not df_all.empty:
-            df_all['Équipe'] = EQUIPE_A 
-            with st.sidebar.expander("📝 Assigner les membres", expanded=False):
-                df_valide = st.data_editor(df_all, hide_index=True, use_container_width=True)
-            df_a_final = df_valide[df_valide['Équipe'] == EQUIPE_A]
-            df_b_final = df_valide[df_valide['Équipe'] == EQUIPE_B]
-        else:
-            df_a_final, df_b_final = pd.DataFrame(), pd.DataFrame()
-
-        # Navigation
-        page = st.sidebar.radio("📋 Navigation", ["📊 Analyse Tactique", "📋 Tableaux des Sets"])
-
-        # --- BOUTON D'EXPORT DANS LA SIDEBAR ---
-        st.sidebar.divider()
-        st.sidebar.subheader("💾 Export des données")
-        
-        # Préparation des données (on utilise FINAL_SCORES défini juste au-dessus)
-        s1 = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME)) if check_set_exists(FINAL_SCORES, 0) else pd.DataFrame()
-        s2 = process_and_structure_set_2_a(extract_raw_set_2_a(st.session_state.PDF_FILENAME)) if check_set_exists(FINAL_SCORES, 1) else pd.DataFrame()
-        s3 = process_and_structure_set_3_a(extract_raw_set_3_a(st.session_state.PDF_FILENAME)) if check_set_exists(FINAL_SCORES, 2) else pd.DataFrame()
-        s4 = process_and_structure_set_4_a(extract_raw_set_4_a(st.session_state.PDF_FILENAME)) if check_set_exists(FINAL_SCORES, 3) else pd.DataFrame()
-        s5 = process_and_structure_set_5_a(extract_raw_set_5_a(st.session_state.PDF_FILENAME)) if check_set_exists(FINAL_SCORES, 4) else pd.DataFrame()
-
-        donnees_xlsx = creer_excel_flux(FINAL_SCORES, s1, s2, s3, s4, s5)
-        
-        st.sidebar.download_button(
-            label="📥 Télécharger l'analyse (.xlsx)",
-            data=donnees_xlsx,
-            file_name=f"Analyse_{EQUIPE_A}_vs_{EQUIPE_B}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-
-        # --- 4. AFFICHAGE DU CONTENU PRINCIPAL ---
-        st.markdown(f"## 🏐 MATCH : {EQUIPE_A} ({sets_a}) 🆚 ({sets_b}) {EQUIPE_B}")
-        sets_joues = [f"Set {i+1}" for i in range(5) if check_set_exists(FINAL_SCORES, i)]
 
         st.markdown(f"## 🏐 MATCH : {EQUIPE_A} ({sets_a}) 🆚 ({sets_b}) {EQUIPE_B}")
         sets_joues = [f"Set {i+1}" for i in range(5) if check_set_exists(FINAL_SCORES, i)]
@@ -1287,11 +1271,15 @@ if st.session_state.PDF_FILENAME:
         # --- PAGE 2 : TABLEAUX DES SETS ---
         elif page == "📋 Tableaux des Sets":
             st.header("📋 Tableaux Finaux par Set")
+            
+            # Initialisation du collecteur pour l'export
+            tableaux_pour_export = {}
+
             for idx, tab_name in enumerate(sets_joues):
                 set_num = idx + 1
                 st.subheader(f"📍 {tab_name}")
                 
-                # Assignation dynamique des noms pour les légendes
+                # Extraction des données (ton code actuel)
                 if set_num == 1:
                     df_left = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME))
                     df_right = process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
@@ -1313,7 +1301,10 @@ if st.session_state.PDF_FILENAME:
                     df_right = process_and_structure_set_5_b(extract_raw_set_5_b(st.session_state.PDF_FILENAME))
                     nom_gauche, nom_droite = EQUIPE_A, EQUIPE_B
 
-                # Affichage côte à côte avec les noms réels
+                # ON AJOUTE LES DONNÉES AU COLLECTEUR (Côté Gauche uniquement par exemple)
+                tableaux_pour_export[f"Set_{set_num}"] = df_left
+
+                # Affichage des tableaux (ton code actuel)
                 c1, c2 = st.columns(2)
                 with c1: 
                     st.caption(f"🛡️ {nom_gauche} (Côté Gauche)")
@@ -1322,5 +1313,18 @@ if st.session_state.PDF_FILENAME:
                     st.caption(f"🚀 {nom_droite} (Côté Droite)")
                     st.dataframe(df_right, use_container_width=True)
                 st.divider()
+
+            # --- LE BOUTON DE TÉLÉCHARGEMENT (Tout en bas de la page 2) ---
+            if tableaux_pour_export:
+                st.subheader("📥 Exportation finale")
+                donnees_xlsx = creer_excel_flux(FINAL_SCORES, tableaux_pour_export)
+                
+                st.download_button(
+                    label="💾 Télécharger tous les Tableaux (.xlsx)",
+                    data=donnees_xlsx,
+                    file_name=f"Analyse_Sets_{EQUIPE_A}_vs_{EQUIPE_B}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 else:
     st.warning("👈 Veuillez charger un fichier PDF dans la barre latérale.")
