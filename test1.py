@@ -1086,13 +1086,12 @@ def calculer_sequences_precises(df_a, df_b, col_idx):
 # Bouton de téléchargement
 # ======================================================================
 
-def creer_excel_flux(df_scores, *tableaux):
+def creer_excel_flux(liste_dfs, noms_onglets):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        for i, df in enumerate(tableaux):
-            if df is not None and not df.empty:
-                # On nomme l'onglet Set_1, Set_2, etc.
-                df.to_excel(writer, sheet_name=f"Set_{i+1}", index=False)
+        for df, nom in zip(liste_dfs, noms_onglets):
+            if not df.empty:
+                df.to_excel(writer, sheet_name=nom, index=False)
     return output.getvalue()
 
 # ======================================================================
@@ -1273,14 +1272,20 @@ if st.session_state.PDF_FILENAME:
         elif page == "📋 Tableaux des Sets":
             st.header("📋 Tableaux Finaux par Set")
             
-            # Initialisation du collecteur pour l'export
-            tableaux_pour_export = {}
+            # Initialisation d'une liste pour stocker les tableaux au fur et à mesure
+            tableaux_pour_export = []
+            noms_pour_export = []
 
             for idx, tab_name in enumerate(sets_joues):
-                set_num = idx + 1
+                # On récupère le numéro du set à partir de son nom (ex: "Set 1" -> 1)
+                try:
+                    set_num = int(tab_name.split()[-1])
+                except:
+                    set_num = idx + 1
+                
                 st.subheader(f"📍 {tab_name}")
                 
-                # Extraction des données (ton code actuel)
+                # Assignation dynamique selon le set (ton code d'extraction existant)
                 if set_num == 1:
                     df_left = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME))
                     df_right = process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
@@ -1302,10 +1307,12 @@ if st.session_state.PDF_FILENAME:
                     df_right = process_and_structure_set_5_b(extract_raw_set_5_b(st.session_state.PDF_FILENAME))
                     nom_gauche, nom_droite = EQUIPE_A, EQUIPE_B
 
-                # ON AJOUTE LES DONNÉES AU COLLECTEUR (Côté Gauche uniquement par exemple)
-                tableaux_pour_export[f"Set_{set_num}"] = df_left
+                # --- MISE EN MÉMOIRE POUR L'EXPORT ---
+                # On garde le tableau de l'équipe qui nous intéresse (ex: df_left)
+                tableaux_pour_export.append(df_left)
+                noms_pour_export.append(f"Set {set_num}")
 
-                # Affichage des tableaux (ton code actuel)
+                # Affichage côte à côte
                 c1, c2 = st.columns(2)
                 with c1: 
                     st.caption(f"🛡️ {nom_gauche} (Côté Gauche)")
@@ -1315,15 +1322,18 @@ if st.session_state.PDF_FILENAME:
                     st.dataframe(df_right, use_container_width=True)
                 st.divider()
 
-            # --- LE BOUTON DE TÉLÉCHARGEMENT (Tout en bas de la page 2) ---
+            # --- LE BOUTON DE TÉLÉCHARGEMENT FINAL (Tout en bas) ---
             if tableaux_pour_export:
-                st.subheader("📥 Exportation finale")
-                donnees_xlsx = creer_excel_flux(FINAL_SCORES, tableaux_pour_export)
+                st.write("### 📂 Exportation des données")
+                st.info("Cliquez sur le bouton ci-dessous pour télécharger tous les tableaux ci-dessus dans un seul fichier Excel.")
+                
+                # Génération du fichier Excel
+                excel_data = creer_excel_flux(tableaux_pour_export, noms_pour_export)
                 
                 st.download_button(
-                    label="💾 Télécharger tous les Tableaux (.xlsx)",
-                    data=donnees_xlsx,
-                    file_name=f"Analyse_Sets_{EQUIPE_A}_vs_{EQUIPE_B}.xlsx",
+                    label="💾 Télécharger les Tableaux (.xlsx)",
+                    data=excel_data,
+                    file_name=f"Tableaux_Match_{EQUIPE_A}_vs_{EQUIPE_B}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
