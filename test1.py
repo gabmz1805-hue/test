@@ -1087,11 +1087,54 @@ def calculer_sequences_precises(df_a, df_b, col_idx):
 # ======================================================================
 
 def creer_excel_flux(liste_dfs, noms_onglets):
+    """Génère le fichier Excel avec bordures et en-têtes stylisés."""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        workbook = writer.book
+        
+        # --- DÉFINITION DU STYLE ---
+        # On crée un format avec des bordures noires fines (1)
+        border_format = workbook.add_format({
+            'border': 1,       # Bordures tout autour
+            'align': 'center', # Texte centré
+            'valign': 'vcenter'
+        })
+        
+        # Format spécial pour les titres (Gris clair + Gras + Bordures)
+        header_format = workbook.add_format({
+            'bold': True,
+            'bg_color': '#D7E4BC',
+            'border': 1,
+            'align': 'center'
+        })
+
         for df, nom in zip(liste_dfs, noms_onglets):
-            if not df.empty:
-                df.to_excel(writer, sheet_name=nom, index=False)
+            if df is not None and not df.empty:
+                nom_propre = str(nom).replace(":", "").replace("/", "")
+                df.to_excel(writer, sheet_name=nom_propre, index=False)
+                
+                # Récupérer la feuille de calcul actuelle
+                worksheet = writer.sheets[nom_propre]
+                
+                # Déterminer la zone occupée par les données (lignes et colonnes)
+                rows, cols = df.shape
+                
+                # 1. Appliquer le format aux en-têtes
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, header_format)
+                
+                # 2. Appliquer les bordures à toutes les cellules de données
+                # Range : de la ligne 1 à 'rows', et de la colonne 0 à 'cols-1'
+                worksheet.conditional_format(0, 0, rows, cols - 1, {
+                    'type':     'no_errors', # Applique à toutes les cellules sans erreur
+                    'format':   border_format
+                })
+                
+                # Ajuster automatiquement la largeur des colonnes
+                for i, col in enumerate(df.columns):
+                    column_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
+                    worksheet.set_column(i, i, column_len)
+
     return output.getvalue()
 
 # ======================================================================
