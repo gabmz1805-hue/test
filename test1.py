@@ -1086,54 +1086,44 @@ def calculer_sequences_precises(df_a, df_b, col_idx):
 # Bouton de téléchargement
 # ======================================================================
 
-def creer_excel_flux(liste_dfs, noms_onglets):
-    """Génère le fichier Excel avec bordures et en-têtes stylisés."""
+def creer_excel_flux(dfs_gauche, dfs_droite, noms_g, noms_d, noms_onglets):
+    """Génère Excel avec 2 tableaux côte à côte par onglet + noms des équipes."""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
         
-        # --- DÉFINITION DU STYLE ---
-        # On crée un format avec des bordures noires fines (1)
-        border_format = workbook.add_format({
-            'border': 1,       # Bordures tout autour
-            'align': 'center', # Texte centré
-            'valign': 'vcenter'
-        })
-        
-        # Format spécial pour les titres (Gris clair + Gras + Bordures)
-        header_format = workbook.add_format({
-            'bold': True,
-            'bg_color': '#D7E4BC',
-            'border': 1,
-            'align': 'center'
-        })
+        # Styles
+        header_format = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1, 'align': 'center'})
+        team_name_format = workbook.add_format({'bold': True, 'font_size': 14, 'font_color': '#1E4E79'})
+        border_format = workbook.add_format({'border': 1, 'align': 'center'})
 
-        for df, nom in zip(liste_dfs, noms_onglets):
-            if df is not None and not df.empty:
-                nom_propre = str(nom).replace(":", "").replace("/", "")
-                df.to_excel(writer, sheet_name=nom_propre, index=False)
-                
-                # Récupérer la feuille de calcul actuelle
-                worksheet = writer.sheets[nom_propre]
-                
-                # Déterminer la zone occupée par les données (lignes et colonnes)
-                rows, cols = df.shape
-                
-                # 1. Appliquer le format aux en-têtes
-                for col_num, value in enumerate(df.columns.values):
-                    worksheet.write(0, col_num, value, header_format)
-                
-                # 2. Appliquer les bordures à toutes les cellules de données
-                # Range : de la ligne 1 à 'rows', et de la colonne 0 à 'cols-1'
-                worksheet.conditional_format(0, 0, rows, cols - 1, {
-                    'type':     'no_errors', # Applique à toutes les cellules sans erreur
-                    'format':   border_format
-                })
-                
-                # Ajuster automatiquement la largeur des colonnes
-                for i, col in enumerate(df.columns):
-                    column_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
-                    worksheet.set_column(i, i, column_len)
+        for i in range(len(dfs_gauche)):
+            df_g = dfs_gauche[i]
+            df_d = dfs_droite[i]
+            nom_onglet = noms_onglets[i].replace(":", "")
+
+            # Créer la feuille
+            df_g.to_excel(writer, sheet_name=nom_onglet, index=False, startrow=2) # Laisse de la place en haut
+            worksheet = writer.sheets[nom_onglet]
+
+            # 1. Écrire le nom de l'équipe GAUCHE
+            worksheet.write(0, 0, f"🛡️ {noms_g[i]}", team_name_format)
+            
+            # 2. Écrire le nom de l'équipe DROITE (décalé après le 1er tableau)
+            start_col_droite = df_g.shape[1] + 2
+            worksheet.write(0, start_col_droite, f"🚀 {noms_d[i]}", team_name_format)
+
+            # 3. Écrire le deuxième tableau (Équipe Droite)
+            df_d.to_excel(writer, sheet_name=nom_onglet, index=False, startrow=2, startcol=start_col_droite)
+
+            # --- Application des bordures et styles ---
+            # Tableau Gauche
+            worksheet.conditional_format(2, 0, 2 + df_g.shape[0], df_g.shape[1] - 1, {'type': 'no_errors', 'format': border_format})
+            # Tableau Droite
+            worksheet.conditional_format(2, start_col_droite, 2 + df_d.shape[0], start_col_droite + df_d.shape[1] - 1, {'type': 'no_errors', 'format': border_format})
+
+            # Ajustement largeur colonnes
+            worksheet.set_column(0, start_col_droite + df_d.shape[1], 15)
 
     return output.getvalue()
 
@@ -1315,20 +1305,16 @@ if st.session_state.PDF_FILENAME:
         elif page == "📋 Tableaux des Sets":
             st.header("📋 Tableaux Finaux par Set")
             
-            # Initialisation d'une liste pour stocker les tableaux au fur et à mesure
-            tableaux_pour_export = []
-            noms_pour_export = []
+            # Initialisation des collecteurs pour l'export Excel complet
+            all_dfs_gauche, all_dfs_droite = [], []
+            all_noms_g, all_noms_d = [], []
 
             for idx, tab_name in enumerate(sets_joues):
-                # On récupère le numéro du set à partir de son nom (ex: "Set 1" -> 1)
-                try:
-                    set_num = int(tab_name.split()[-1])
-                except:
-                    set_num = idx + 1
-                
+                # On détermine le numéro du set (ex: "Set 1" -> 1)
+                set_num = int(tab_name.split()[-1])
                 st.subheader(f"📍 {tab_name}")
                 
-                # Assignation dynamique selon le set (ton code d'extraction existant)
+                # --- EXTRACTION ET ATTRIBUTION (Selon votre logique de set) ---
                 if set_num == 1:
                     df_left = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME))
                     df_right = process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
@@ -1350,33 +1336,33 @@ if st.session_state.PDF_FILENAME:
                     df_right = process_and_structure_set_5_b(extract_raw_set_5_b(st.session_state.PDF_FILENAME))
                     nom_gauche, nom_droite = EQUIPE_A, EQUIPE_B
 
-                # --- MISE EN MÉMOIRE POUR L'EXPORT ---
-                # On garde le tableau de l'équipe qui nous intéresse (ex: df_left)
-                tableaux_pour_export.append(df_left)
-                noms_pour_export.append(f"Set {set_num}")
+                # AJOUT AUX LISTES D'EXPORTATION
+                all_dfs_gauche.append(df_left)
+                all_dfs_droite.append(df_right)
+                all_noms_g.append(nom_gauche)
+                all_noms_d.append(nom_droite)
 
-                # Affichage côte à côte
+                # AFFICHAGE STREAMLIT CÔTE À CÔTE
                 c1, c2 = st.columns(2)
                 with c1: 
-                    st.caption(f"🛡️ {nom_gauche} (Côté Gauche)")
-                    st.dataframe(df_left, use_container_width=True)
+                    st.caption(f"🛡️ {nom_gauche}")
+                    st.dataframe(df_left, use_container_width=True, hide_index=True)
                 with c2: 
-                    st.caption(f"🚀 {nom_droite} (Côté Droite)")
-                    st.dataframe(df_right, use_container_width=True)
+                    st.caption(f"🚀 {nom_droite}")
+                    st.dataframe(df_right, use_container_width=True, hide_index=True)
                 st.divider()
 
-            # --- LE BOUTON DE TÉLÉCHARGEMENT FINAL (Tout en bas) ---
-            if tableaux_pour_export:
-                st.write("### 📂 Exportation des données")
-                st.info("Cliquez sur le bouton ci-dessous pour télécharger tous les tableaux ci-dessus dans un seul fichier Excel.")
+            # --- BOUTON DE TÉLÉCHARGEMENT FINAL (Tout en bas de la page) ---
+            if all_dfs_gauche:
+                st.write("### 📂 Sauvegarde Excel")
+                st.info("Exportez tous les tableaux affichés ci-dessus dans un fichier unique (1 feuille par set).")
                 
-                # Génération du fichier Excel
-                excel_data = creer_excel_flux(tableaux_pour_export, noms_pour_export)
+                excel_data = creer_excel_flux(all_dfs_gauche, all_dfs_droite, all_noms_g, all_noms_d, sets_joues)
                 
                 st.download_button(
-                    label="💾 Télécharger les Tableaux (.xlsx)",
+                    label="💾 Télécharger l'Analyse Complète (.xlsx)",
                     data=excel_data,
-                    file_name=f"Tableaux_Match_{EQUIPE_A}_vs_{EQUIPE_B}.xlsx",
+                    file_name=f"Analyse_Match_{EQUIPE_A}_vs_{EQUIPE_B}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
