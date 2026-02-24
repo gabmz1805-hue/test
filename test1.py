@@ -1368,7 +1368,7 @@ if st.session_state.PDF_FILENAME:
                 st.download_button(
                     label="💾 Télécharger les tableaux (.xlsx)",
                     data=excel_data,
-                    file_name=f"Analyse_Positions_{EQUIPE_A}_vs_{EQUIPE_B}.xlsx",
+                    file_name=f"Tableaux_Match_{EQUIPE_A}_vs_{EQUIPE_B}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
