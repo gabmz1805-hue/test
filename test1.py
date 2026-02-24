@@ -1310,7 +1310,7 @@ if st.session_state.PDF_FILENAME:
 
         # --- PAGE 2 : TABLEAUX DES SETS ---
         elif page == "📋 Tableaux des Sets":
-            st.header("📋 Tableaux Finaux par Set (Positions I à VI)")
+            st.header("📋 Tableaux Finaux par Set")
             
             all_dfs_gauche, all_dfs_droite = [], []
             all_noms_g, all_noms_d = [], []
@@ -1366,7 +1366,7 @@ if st.session_state.PDF_FILENAME:
             if all_dfs_gauche:
                 excel_data = creer_excel_flux(all_dfs_gauche, all_dfs_droite, all_noms_g, all_noms_d, sets_joues)
                 st.download_button(
-                    label="💾 Télécharger l'Analyse avec Positions I-VI (.xlsx)",
+                    label="💾 Télécharger les tableaux (.xlsx)",
                     data=excel_data,
                     file_name=f"Analyse_Positions_{EQUIPE_A}_vs_{EQUIPE_B}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
