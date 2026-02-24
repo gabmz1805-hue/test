@@ -1087,7 +1087,7 @@ def calculer_sequences_precises(df_a, df_b, col_idx):
 # ======================================================================
 
 def creer_excel_flux(dfs_gauche, dfs_droite, noms_g, noms_d, noms_onglets):
-    """Génère Excel avec 2 tableaux côte à côte par onglet + noms des équipes."""
+    """Génère Excel avec 2 tableaux côte à côte, bordures et colonnes I à VI."""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
@@ -1095,35 +1095,42 @@ def creer_excel_flux(dfs_gauche, dfs_droite, noms_g, noms_d, noms_onglets):
         # Styles
         header_format = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1, 'align': 'center'})
         team_name_format = workbook.add_format({'bold': True, 'font_size': 14, 'font_color': '#1E4E79'})
-        border_format = workbook.add_format({'border': 1, 'align': 'center'})
+        border_format = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
+
+        # Noms des colonnes de volley
+        colonnes_volley = ['I', 'II', 'III', 'IV', 'V', 'VI']
 
         for i in range(len(dfs_gauche)):
-            df_g = dfs_gauche[i]
-            df_d = dfs_droite[i]
-            nom_onglet = noms_onglets[i].replace(":", "")
+            # On crée une copie pour ne pas modifier l'affichage Streamlit
+            df_g = dfs_gauche[i].copy()
+            df_d = dfs_droite[i].copy()
+            
+            # Renommage des colonnes (si le tableau a 6 colonnes)
+            if len(df_g.columns) == 6:
+                df_g.columns = colonnes_volley
+                df_d.columns = colonnes_volley
 
-            # Créer la feuille
-            df_g.to_excel(writer, sheet_name=nom_onglet, index=False, startrow=2) # Laisse de la place en haut
+            nom_onglet = noms_onglets[i].replace(":", "")
+            df_g.to_excel(writer, sheet_name=nom_onglet, index=False, startrow=2)
             worksheet = writer.sheets[nom_onglet]
 
-            # 1. Écrire le nom de l'équipe GAUCHE
-            worksheet.write(0, 0, f"🛡️ {noms_g[i]}", team_name_format)
-            
-            # 2. Écrire le nom de l'équipe DROITE (décalé après le 1er tableau)
+            # Titres et Tableaux
+            worksheet.write(0, 0, f" {noms_g[i]}", team_name_format)
             start_col_droite = df_g.shape[1] + 2
-            worksheet.write(0, start_col_droite, f"🚀 {noms_d[i]}", team_name_format)
-
-            # 3. Écrire le deuxième tableau (Équipe Droite)
+            worksheet.write(0, start_col_droite, f" {noms_d[i]}", team_name_format)
             df_d.to_excel(writer, sheet_name=nom_onglet, index=False, startrow=2, startcol=start_col_droite)
 
-            # --- Application des bordures et styles ---
-            # Tableau Gauche
+            # Application du format En-tête (I, II, III...)
+            for col_num, value in enumerate(df_g.columns.values):
+                worksheet.write(2, col_num, value, header_format)
+            for col_num, value in enumerate(df_d.columns.values):
+                worksheet.write(2, start_col_droite + col_num, value, header_format)
+
+            # Bordures
             worksheet.conditional_format(2, 0, 2 + df_g.shape[0], df_g.shape[1] - 1, {'type': 'no_errors', 'format': border_format})
-            # Tableau Droite
             worksheet.conditional_format(2, start_col_droite, 2 + df_d.shape[0], start_col_droite + df_d.shape[1] - 1, {'type': 'no_errors', 'format': border_format})
 
-            # Ajustement largeur colonnes
-            worksheet.set_column(0, start_col_droite + df_d.shape[1], 15)
+            worksheet.set_column(0, start_col_droite + df_d.shape[1], 12)
 
     return output.getvalue()
 
@@ -1303,18 +1310,17 @@ if st.session_state.PDF_FILENAME:
 
         # --- PAGE 2 : TABLEAUX DES SETS ---
         elif page == "📋 Tableaux des Sets":
-            st.header("📋 Tableaux Finaux par Set")
+            st.header("📋 Tableaux Finaux par Set (Positions I à VI)")
             
-            # Initialisation des collecteurs pour l'export Excel complet
             all_dfs_gauche, all_dfs_droite = [], []
             all_noms_g, all_noms_d = [], []
+            colonnes_volley = ['I', 'II', 'III', 'IV', 'V', 'VI']
 
             for idx, tab_name in enumerate(sets_joues):
-                # On détermine le numéro du set (ex: "Set 1" -> 1)
                 set_num = int(tab_name.split()[-1])
                 st.subheader(f"📍 {tab_name}")
                 
-                # --- EXTRACTION ET ATTRIBUTION (Selon votre logique de set) ---
+                # --- EXTRACTION ET ATTRIBUTION ---
                 if set_num == 1:
                     df_left = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME))
                     df_right = process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
@@ -1336,33 +1342,33 @@ if st.session_state.PDF_FILENAME:
                     df_right = process_and_structure_set_5_b(extract_raw_set_5_b(st.session_state.PDF_FILENAME))
                     nom_gauche, nom_droite = EQUIPE_A, EQUIPE_B
 
-                # AJOUT AUX LISTES D'EXPORTATION
+                # Renommage pour l'esthétique Streamlit
+                if len(df_left.columns) == 6:
+                    df_left.columns = colonnes_volley
+                    df_right.columns = colonnes_volley
+
                 all_dfs_gauche.append(df_left)
                 all_dfs_droite.append(df_right)
                 all_noms_g.append(nom_gauche)
                 all_noms_d.append(nom_droite)
 
-                # AFFICHAGE STREAMLIT CÔTE À CÔTE
+                # AFFICHAGE
                 c1, c2 = st.columns(2)
                 with c1: 
-                    st.caption(f"🛡️ {nom_gauche}")
+                    st.caption(f" {nom_gauche}")
                     st.dataframe(df_left, use_container_width=True, hide_index=True)
                 with c2: 
-                    st.caption(f"🚀 {nom_droite}")
+                    st.caption(f" {nom_droite}")
                     st.dataframe(df_right, use_container_width=True, hide_index=True)
                 st.divider()
 
-            # --- BOUTON DE TÉLÉCHARGEMENT FINAL (Tout en bas de la page) ---
+            # --- BOUTON DE TÉLÉCHARGEMENT ---
             if all_dfs_gauche:
-                st.write("### 📂 Sauvegarde Excel")
-                st.info("Exportez tous les tableaux affichés ci-dessus dans un fichier unique (1 feuille par set).")
-                
                 excel_data = creer_excel_flux(all_dfs_gauche, all_dfs_droite, all_noms_g, all_noms_d, sets_joues)
-                
                 st.download_button(
-                    label="💾 Télécharger l'Analyse Complète (.xlsx)",
+                    label="💾 Télécharger l'Analyse avec Positions I-VI (.xlsx)",
                     data=excel_data,
-                    file_name=f"Analyse_Match_{EQUIPE_A}_vs_{EQUIPE_B}.xlsx",
+                    file_name=f"Analyse_Positions_{EQUIPE_A}_vs_{EQUIPE_B}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
