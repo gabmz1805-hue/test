@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import pdfplumber
 import re
+import io
 from tabulate import tabulate
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
