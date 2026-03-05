@@ -1298,29 +1298,48 @@ if st.session_state.PDF_FILENAME:
                         st.write(f"⏱️ **Temps Morts :** {EQUIPE_A} (`{tm[0] or '-'}` , `{tm[1] or '-'}`) | {EQUIPE_B} (`{tm[2] or '-'}` , `{tm[3] or '-'}`)")
                         tracer_duel_equipes(df_a, df_b, titre=f"Évolution {tab_name}", nom_g=n_g, nom_d=n_d)
 
-                        # --- ANALYSE ROTATIONS ---
+                        # --- ANALYSE ROTATIONS (TRIÉES : X À LA FIN) ---
                         v_a, v_b = df_a.iloc[0].values, df_b.iloc[0].values
                         r_a = [{'I':v_a[i%6],'II':v_a[(i+1)%6],'III':v_a[(i+2)%6],'IV':v_a[(i+3)%6],'V':v_a[(i+4)%6],'VI':v_a[(i+5)%6]} for i in range(6)]
                         r_b = [{'I':v_b[i%6],'II':v_b[(i+1)%6],'III':v_b[(i+2)%6],'IV':v_b[(i+3)%6],'V':v_b[(i+4)%6],'VI':v_b[(i+5)%6]} for i in range(6)]
 
-                        fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45)) # Crée fig_rot ici pour éviter NameError
+                        # Logique de tri pour mettre les rotations avec 'X' à la fin
+                        indices_normaux = []
+                        indices_avec_x = []
                         for i in range(6):
-                            m_a, m_b = calculer_sequences_precises(df_a, df_b, i)
-                            dessiner_rotation_couleurs(axes[i, 0], n_g, r_a[i], n_d, r_b[i], serveur='A')
-                            if m_a:
-                                s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
-                                s_diff = "\n".join([f"{int(va)-int(vb)}" for va,vb in zip(m_a,m_b)])
-                                axes[i,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
-                                axes[i,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='salmon')
-                                axes[i,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
+                            col_str_a = df_a.iloc[4:, i].astype(str).str.upper().values
+                            col_str_b = df_b.iloc[4:, i].astype(str).str.upper().values
+                            if 'X' in col_str_a or 'X' in col_str_b:
+                                indices_avec_x.append(i)
+                            else:
+                                indices_normaux.append(i)
+                        
+                        ordre_affichage = indices_normaux + indices_avec_x
 
-                            dessiner_rotation_couleurs(axes[i, 1], n_g, r_a[i], n_d, r_b[i], serveur='B')
+                        fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
+                        for idx_affichage, idx_reel in enumerate(ordre_affichage):
+                            m_a, m_b = calculer_sequences_precises(df_a, df_b, idx_reel)
+                            
+                            # Colonne de gauche : Serveur A
+                            dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, r_a[idx_reel], n_d, r_b[idx_reel], serveur='A')
+                            if m_a:
+                                s_m_a = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)])
+                                s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
+                                s_diff = "\n".join([f"{int(va)-int(vb)}" for va,vb in zip(m_a,m_b)])
+                                axes[idx_affichage,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
+                                axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='salmon')
+                                axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
+
+                            # Colonne de droite : Serveur B
+                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, r_a[idx_reel], n_d, r_b[idx_reel], serveur='B')
                             if m_b:
-                                s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
+                                s_m_a = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)])
+                                s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
                                 s_diff_b = "\n".join([f"{int(vb)-int(va)}" for va,vb in zip(m_a,m_b)])
-                                axes[i,1].text(1,-1.5, f"pts marqués\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='darkorange')
-                                axes[i,1].text(7,-1.5, f"pts encaissés\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
-                                axes[i,1].text(13,-1.5, f"différence\n{s_diff_b}\n\nTotal: {sum(m_b)-sum(m_a):+d}", family='monospace', weight='bold', va='top')
+                                axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='darkorange')
+                                axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
+                                axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_diff_b}\n\nTotal: {sum(m_b)-sum(m_a):+d}", family='monospace', weight='bold', va='top')
+                        
                         st.pyplot(fig_rot)
 
         # --- PAGE 2 : TABLEAUX DES SETS ---
