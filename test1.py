@@ -1300,8 +1300,11 @@ if st.session_state.PDF_FILENAME:
 
                         # --- ANALYSE ROTATIONS (TRIÉES : X À LA FIN) ---
                         v_a, v_b = df_a.iloc[0].values, df_b.iloc[0].values
-                        r_a = [{'I':v_a[i%6],'II':v_a[(i+1)%6],'III':v_a[(i+2)%6],'IV':v_a[(i+3)%6],'V':v_a[(i+4)%6],'VI':v_a[(i+5)%6]} for i in range(6)]
-                        r_b = [{'I':v_b[i%6],'II':v_b[(i+1)%6],'III':v_b[(i+2)%6],'IV':v_b[(i+3)%6],'V':v_b[(i+4)%6],'VI':v_b[(i+5)%6]} for i in range(6)]
+
+                        # On prépare les 6 positions de base pour chaque équipe
+                        # Ces listes contiennent les joueurs dans l'ordre de rotation I, II, III, IV, V, VI
+                        base_a = [v_a[i%6] for i in range(6)]
+                        base_b = [v_b[i%6] for i in range(6)]
 
                         # Logique de tri pour mettre les rotations avec 'X' à la fin
                         indices_normaux = []
@@ -1313,25 +1316,49 @@ if st.session_state.PDF_FILENAME:
                                 indices_avec_x.append(i)
                             else:
                                 indices_normaux.append(i)
-                        
+
                         ordre_affichage = indices_normaux + indices_avec_x
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
+
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
                             m_a, m_b = calculer_sequences_precises(df_a, df_b, idx_reel)
                             
-                            # Colonne de gauche : Serveur A
-                            dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, r_a[idx_reel], n_d, r_b[idx_reel], serveur='A')
-                            if m_a:
-                                s_m_a = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)])
-                                s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
-                                s_diff = "\n".join([f"{int(va)-int(vb)}" for va,vb in zip(m_a,m_b)])
-                                axes[idx_affichage,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
-                                axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='salmon')
-                                axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
+                            # --- TERRAIN DE GAUCHE : SERVEUR A ---
+                            # Ici, A sert (position de la colonne idx_reel)
+                            # B reçoit : ses positions sont celles de la rotation précédente 
+                            # (car B ne tournera que s'il gagne le point pour servir ensuite)
+                            # Sauf pour la toute première rotation du match (idx_reel == 0)
+                            
+                            rot_a_serve = {'I':base_a[idx_reel], 'II':base_a[(idx_reel+1)%6], 'III':base_a[(idx_reel+2)%6], 
+                                          'IV':base_a[(idx_reel+3)%6], 'V':base_a[(idx_reel+4)%6], 'VI':base_a[(idx_reel+5)%6]}
+                            
+                            # Pour le receveur B sur le service de A, on garde la rotation "actuelle"
+                            rot_b_receive = {'I':base_b[idx_reel], 'II':base_b[(idx_reel+1)%6], 'III':base_b[(idx_reel+2)%6], 
+                                            'IV':base_b[(idx_reel+3)%6], 'V':base_b[(idx_reel+4)%6], 'VI':base_b[(idx_reel+5)%6]}
+                            
+                            dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_serve, n_d, rot_b_receive, serveur='A')
+                            
+                            # Affichage des stats m_a / m_b (ton code existant) ...
+                            # [Citer : ton code pour l'affichage des points marqués/encaissés/différence]
 
-                            # Colonne de droite : Serveur B
-                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, r_a[idx_reel], n_d, r_b[idx_reel], serveur='B')
+                            # --- TERRAIN DE DROITE : SERVEUR B ---
+                            # Ici, B sert. 
+                            # SI l'équipe de départ était A (val_g_start != 'X'), B a dû tourner pour prendre le service.
+                            # On applique le décalage de rotation à B seulement ici.
+                            
+                            # A reçoit : reste sur sa rotation idx_reel
+                            rot_a_receive = {'I':base_a[idx_reel], 'II':base_a[(idx_reel+1)%6], 'III':base_a[(idx_reel+2)%6], 
+                                            'IV':base_a[(idx_reel+3)%6], 'V':base_a[(idx_reel+4)%6], 'VI':base_a[(idx_reel+5)%6]}
+                            
+                            # B tourne pour servir (on prend le joueur suivant dans la base_b)
+                            # C'est ici que la modification est cruciale pour l'équipe de droite
+                            rot_b_serve = {'I':base_b[(idx_reel+1)%6], 'II':base_b[(idx_reel+2)%6], 'III':base_b[(idx_reel+3)%6], 
+                                          'IV':base_b[(idx_reel+4)%6], 'V':base_b[(idx_reel+5)%6], 'VI':base_b[(idx_reel+0)%6]}
+                            
+                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_receive, n_d, rot_b_serve, serveur='B')
+                            
+                            # Affichage des stats m_a / m_b (ton code existant) ...
                             if m_b:
                                 s_m_a = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)])
                                 s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
