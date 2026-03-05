@@ -863,7 +863,7 @@ def process_and_structure_scores(raw_df_data: pd.DataFrame) -> pd.DataFrame:
 # ======================================================================
 
 def tracer_duel_equipes(df_g, df_d, titre="Duel", nom_g="Équipe A", nom_d="Équipe B"):
-    """Génère le graphique en barres de l'évolution du score."""
+    """Génère le graphique en barres de l'évolution du score en ignorant les 'X'."""
     if df_g is None or df_d is None:
         return
 
@@ -896,33 +896,48 @@ def tracer_duel_equipes(df_g, df_d, titre="Duel", nom_g="Équipe A", nom_d="Équ
                 target_df = df_g if equipe == 'G' else df_d
                 this_color = color_g if equipe == 'G' else color_d
 
-                joueur_num = str(target_df.iloc[0, col_idx])
                 score_val = target_df.iloc[ligne_idx, col_idx]
                 s_str = str(score_val).upper().strip()
 
+                # --- MODIFICATION ICI : On saute complètement si c'est un 'X' ---
+                if s_str == 'X':
+                    continue
+                # ---------------------------------------------------------------
+
+                joueur_num = str(target_df.iloc[0, col_idx])
+                
+                # On n'ajoute les labels et n'augmente pos_x que si ce n'est pas un 'X'
                 x_labels.append(joueur_num)
                 x_colors.append(this_color)
 
-                if s_str != 'X' and s_str not in ['NAN', '', 'NONE']:
+                if s_str not in ['NAN', '', 'NONE']:
                     try:
                         score_fin = int(float(s_str))
                         last_score = current_score_g if equipe == 'G' else current_score_d
                         height = score_fin - last_score
+                        
                         if height > 0:
                             ax.bar(pos_x, height, bottom=last_score, color=this_color, edgecolor='black', width=0.4)
+                        
                         if equipe == 'G': current_score_g = score_fin
                         else: current_score_d = score_fin
-                    except: pass
+                    except: 
+                        pass
+                
+                # On n'incrémente la position horizontale que pour les joueurs affichés
                 pos_x += 1
 
-        ax.text((debut_bloc + pos_x - 1) / 2, -3.2, nom_sequence, ha='center', va='top', fontsize=11, fontweight='bold', color='#555555')
-        ax.axvline(x=pos_x - 0.5, color='black', linestyle='-', alpha=0.15)
-        compteur_sequence += 1
+        # Placement du texte de séquence et de la ligne séparatrice
+        if pos_x > debut_bloc: # Sécurité si toute une ligne est vide
+            ax.text((debut_bloc + pos_x - 1) / 2, -3.2, nom_sequence, ha='center', va='top', fontsize=11, fontweight='bold', color='#555555')
+            ax.axvline(x=pos_x - 0.5, color='black', linestyle='-', alpha=0.15)
+            compteur_sequence += 1
 
     ax.set_ylim(0, 35)
     ax.set_yticks(range(0, 36))
     ax.set_xticks(range(len(x_labels)))
     xtick_labels = ax.set_xticklabels(x_labels, fontsize=10, fontweight='bold')
+    
     for i, text_label in enumerate(xtick_labels):
         text_label.set_color(x_colors[i])
 
@@ -931,7 +946,7 @@ def tracer_duel_equipes(df_g, df_d, titre="Duel", nom_g="Équipe A", nom_d="Équ
     ax.set_title(titre, fontsize=16, fontweight='bold', pad=25)
     plt.subplots_adjust(bottom=0.2)
 
-    st.pyplot(fig) # Affichage Streamlit
+    st.pyplot(fig)
 # ======================================================================
 # FONCTION Check set - Vérifie si un set a été joué
 # ======================================================================
@@ -1091,7 +1106,7 @@ def creer_excel_flux(dfs_gauche, dfs_droite, noms_g, noms_d, noms_onglets):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
-        
+
         # Styles
         header_format = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1, 'align': 'center'})
         team_name_format = workbook.add_format({'bold': True, 'font_size': 14, 'font_color': '#1E4E79'})
@@ -1104,7 +1119,7 @@ def creer_excel_flux(dfs_gauche, dfs_droite, noms_g, noms_d, noms_onglets):
             # On crée une copie pour ne pas modifier l'affichage Streamlit
             df_g = dfs_gauche[i].copy()
             df_d = dfs_droite[i].copy()
-            
+
             # Renommage des colonnes (si le tableau a 6 colonnes)
             if len(df_g.columns) == 6:
                 df_g.columns = colonnes_volley
@@ -1311,7 +1326,7 @@ if st.session_state.PDF_FILENAME:
         # --- PAGE 2 : TABLEAUX DES SETS ---
         elif page == "📋 Tableaux des Sets":
             st.header("📋 Tableaux Finaux par Set")
-            
+
             all_dfs_gauche, all_dfs_droite = [], []
             all_noms_g, all_noms_d = [], []
             colonnes_volley = ['I', 'II', 'III', 'IV', 'V', 'VI']
@@ -1319,7 +1334,7 @@ if st.session_state.PDF_FILENAME:
             for idx, tab_name in enumerate(sets_joues):
                 set_num = int(tab_name.split()[-1])
                 st.subheader(f"📍 {tab_name}")
-                
+
                 # --- EXTRACTION ET ATTRIBUTION ---
                 if set_num == 1:
                     df_left = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME))
@@ -1354,10 +1369,10 @@ if st.session_state.PDF_FILENAME:
 
                 # AFFICHAGE
                 c1, c2 = st.columns(2)
-                with c1: 
+                with c1:
                     st.caption(f" {nom_gauche}")
                     st.dataframe(df_left, use_container_width=True, hide_index=True)
-                with c2: 
+                with c2:
                     st.caption(f" {nom_droite}")
                     st.dataframe(df_right, use_container_width=True, hide_index=True)
                 st.divider()
