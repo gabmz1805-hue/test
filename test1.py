@@ -1073,6 +1073,20 @@ def dessiner_rotation_couleurs(ax, nom_a, pos_a, nom_b, pos_b, serveur='A'):
             if p != 'I': ax.text(coords_b[p][0], coords_b[p][1], str(n), fontsize=20, weight='bold', color=color_b, ha='center', va='center')
     ax.set_xlim(-3, 21); ax.set_ylim(-1, 10); ax.axis('off')
 
+def obtenir_rotation_positions(base_joueurs, index_rotation, doit_tourner=False):
+    """Calcule les positions I-VI. Si doit_tourner est True, on applique la rotation (+1)."""
+    # Si l'équipe récupère le service, elle tourne : l'index de départ se décale de 1
+    idx = (index_rotation + 1) % 6 if doit_tourner else index_rotation % 6
+    
+    return {
+        'I':   base_joueurs[idx],
+        'II':  base_joueurs[(idx + 1) % 6],
+        'III': base_joueurs[(idx + 2) % 6],
+        'IV':  base_joueurs[(idx + 3) % 6],
+        'V':   base_joueurs[(idx + 4) % 6],
+        'VI':  base_joueurs[(idx + 5) % 6]
+    }
+
 def calculer_sequences_precises(df_a, df_b, col_idx):
     """Calcule les gains réels en soustrayant le score précédent (chronologique)."""
     def to_val(v):
@@ -1291,31 +1305,28 @@ if st.session_state.PDF_FILENAME:
                             else: indices_normaux.append(i)
 
                         ordre_affichage = indices_normaux + indices_avec_x
-                        
+
                         # Détection du premier serveur du SET
                         val_g_start = str(df_a.iloc[4, 0]).upper().strip()
-                        # Si val_g_start == 'X', l'équipe de GAUCHE reçoit en premier.
-                        
+                        a_recoit_en_premier = (val_g_start == 'X')
+
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
 
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
                             m_a, m_b = calculer_sequences_precises(df_a, df_b, idx_reel)
                             
-                            # --- LOGIQUE DE ROTATION ÉQUIPE GAUCHE (A) ---
-                            # Si elle a commencé au service (val_g_start != 'X'), sa rotation I est en idx_reel 0.
-                            # Si elle a reçu en premier, elle tourne dès le premier point gagné.
-                            off_a = 1 if val_g_start == 'X' else 0
-                            rot_a = {'I':base_a[(idx_reel+off_a)%6], 'II':base_a[(idx_reel+off_a+1)%6], 'III':base_a[(idx_reel+off_a+2)%6], 
-                                     'IV':base_a[(idx_reel+off_a+3)%6], 'V':base_a[(idx_reel+off_a+4)%6], 'VI':base_a[(idx_reel+off_a+5)%6]}
+                            # --- LOGIQUE TERRAIN GAUCHE (A au service) ---
+                            # A ne tourne que s'il a commencé le set en recevant (a_recoit_en_premier)
+                            off_a_srv = 1 if a_recoit_en_premier else 0
+                            rot_a_serveur = {'I':base_a[(idx_reel+off_a_srv)%6], 'II':base_a[(idx_reel+off_a_srv+1)%6], 'III':base_a[(idx_reel+off_a_srv+2)%6], 
+                                            'IV':base_a[(idx_reel+off_a_srv+3)%6], 'V':base_a[(idx_reel+off_a_srv+4)%6], 'VI':base_a[(idx_reel+off_a_srv+5)%6]}
                             
-                            # --- LOGIQUE DE ROTATION ÉQUIPE DROITE (B) ---
-                            # Inversement pour B
-                            off_b = 0 if val_g_start == 'X' else 1
-                            rot_b = {'I':base_b[(idx_reel+off_b)%6], 'II':base_b[(idx_reel+off_b+1)%6], 'III':base_b[(idx_reel+off_b+2)%6], 
-                                     'IV':base_b[(idx_reel+off_b+3)%6], 'V':base_b[(idx_reel+off_b+4)%6], 'VI':base_b[(idx_reel+off_b+5)%6]}
+                            # B reçoit : il est sur sa rotation de base pour ce bloc (pas encore tourné)
+                            rot_b_receveur = {'I':base_b[idx_reel%6], 'II':base_b[(idx_reel+1)%6], 'III':base_b[(idx_reel+2)%6], 
+                                              'IV':base_b[(idx_reel+3)%6], 'V':base_b[(idx_reel+4)%6], 'VI':base_b[(idx_reel+5)%6]}
 
-                            # --- TERRAIN GAUCHE : SERVEUR A ---
-                            dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a, n_d, rot_b, serveur='A')
+                            dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_serveur, n_d, rot_b_receveur, serveur='A')
+                            
                             if m_a:
                                 s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
                                 s_diff = "\n".join([f"{int(va)-int(vb)}" for va,vb in zip(m_a,m_b)])
@@ -1323,8 +1334,18 @@ if st.session_state.PDF_FILENAME:
                                 axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='salmon')
                                 axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
 
-                            # --- TERRAIN DROITE : SERVEUR B ---
-                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a, n_d, rot_b, serveur='B')
+                            # --- LOGIQUE TERRAIN DROITE (B au service) ---
+                            # A reçoit : il est sur sa rotation de base pour ce bloc
+                            rot_a_receveur = {'I':base_a[idx_reel%6], 'II':base_a[(idx_reel+1)%6], 'III':base_a[(idx_reel+2)%6], 
+                                              'IV':base_a[(idx_reel+3)%6], 'V':base_a[(idx_reel+4)%6], 'VI':base_a[(idx_reel+5)%6]}
+                            
+                            # B ne tourne que s'il a commencé le set en recevant (donc si A a servi en premier)
+                            off_b_srv = 0 if a_recoit_en_premier else 1
+                            rot_b_serveur = {'I':base_b[(idx_reel+off_b_srv)%6], 'II':base_b[(idx_reel+off_b_srv+1)%6], 'III':base_b[(idx_reel+off_b_srv+2)%6], 
+                                            'IV':base_b[(idx_reel+off_b_srv+3)%6], 'V':base_b[(idx_reel+off_b_srv+4)%6], 'VI':base_b[(idx_reel+off_b_srv+5)%6]}
+
+                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_receveur, n_d, rot_b_serveur, serveur='B')
+                            
                             if m_b:
                                 s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
                                 s_diff_b = "\n".join([f"{int(vb)-int(va)}" for va,vb in zip(m_a,m_b)])
