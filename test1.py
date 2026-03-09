@@ -1305,27 +1305,24 @@ if st.session_state.PDF_FILENAME:
                             else: indices_normaux.append(i)
 
                         ordre_affichage = indices_normaux + indices_avec_x
-
-                        # Détection du premier serveur du SET
+                        
+                        # Si 'X' est à gauche au départ, l'équipe A reçoit (décalage de 1 pour A)
                         val_g_start = str(df_a.iloc[4, 0]).upper().strip()
-                        a_recoit_en_premier = (val_g_start == 'X')
+                        offset = 1 if val_g_start == 'X' else 0
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
 
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
                             m_a, m_b = calculer_sequences_precises(df_a, df_b, idx_reel)
                             
-                            # --- LOGIQUE TERRAIN GAUCHE (A au service) ---
-                            # A ne tourne que s'il a commencé le set en recevant (a_recoit_en_premier)
-                            off_a_srv = 1 if a_recoit_en_premier else 0
-                            rot_a_serveur = {'I':base_a[(idx_reel+off_a_srv)%6], 'II':base_a[(idx_reel+off_a_srv+1)%6], 'III':base_a[(idx_reel+off_a_srv+2)%6], 
-                                            'IV':base_a[(idx_reel+off_a_srv+3)%6], 'V':base_a[(idx_reel+off_a_srv+4)%6], 'VI':base_a[(idx_reel+off_a_srv+5)%6]}
+                            # --- TERRAIN GAUCHE : SERVEUR A ---
+                            # A sert (position de base + offset). B reçoit (position base).
+                            rot_a_g = {'I':base_a[(idx_reel+offset)%6], 'II':base_a[(idx_reel+offset+1)%6], 'III':base_a[(idx_reel+offset+2)%6], 
+                                       'IV':base_a[(idx_reel+offset+3)%6], 'V':base_a[(idx_reel+offset+4)%6], 'VI':base_a[(idx_reel+offset+5)%6]}
+                            rot_b_g = {'I':base_b[idx_reel%6], 'II':base_b[(idx_reel+1)%6], 'III':base_b[(idx_reel+2)%6], 
+                                       'IV':base_b[(idx_reel+3)%6], 'V':base_b[(idx_reel+4)%6], 'VI':base_b[(idx_reel+5)%6]}
                             
-                            # B reçoit : il est sur sa rotation de base pour ce bloc (pas encore tourné)
-                            rot_b_receveur = {'I':base_b[idx_reel%6], 'II':base_b[(idx_reel+1)%6], 'III':base_b[(idx_reel+2)%6], 
-                                              'IV':base_b[(idx_reel+3)%6], 'V':base_b[(idx_reel+4)%6], 'VI':base_b[(idx_reel+5)%6]}
-
-                            dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_serveur, n_d, rot_b_receveur, serveur='A')
+                            dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_g, n_d, rot_b_g, serveur='A')
                             
                             if m_a:
                                 s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
@@ -1334,17 +1331,14 @@ if st.session_state.PDF_FILENAME:
                                 axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='salmon')
                                 axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
 
-                            # --- LOGIQUE TERRAIN DROITE (B au service) ---
-                            # A reçoit : il est sur sa rotation de base pour ce bloc
-                            rot_a_receveur = {'I':base_a[idx_reel%6], 'II':base_a[(idx_reel+1)%6], 'III':base_a[(idx_reel+2)%6], 
-                                              'IV':base_a[(idx_reel+3)%6], 'V':base_a[(idx_reel+4)%6], 'VI':base_a[(idx_reel+5)%6]}
-                            
-                            # B ne tourne que s'il a commencé le set en recevant (donc si A a servi en premier)
-                            off_b_srv = 0 if a_recoit_en_premier else 1
-                            rot_b_serveur = {'I':base_b[(idx_reel+off_b_srv)%6], 'II':base_b[(idx_reel+off_b_srv+1)%6], 'III':base_b[(idx_reel+off_b_srv+2)%6], 
-                                            'IV':base_b[(idx_reel+off_b_srv+3)%6], 'V':base_b[(idx_reel+off_b_srv+4)%6], 'VI':base_b[(idx_reel+off_b_srv+5)%6]}
+                            # --- TERRAIN DROITE : SERVEUR B ---
+                            # A reçoit (position base). B sert (position base + rotation inverse).
+                            rot_a_d = {'I':base_a[idx_reel%6], 'II':base_a[(idx_reel+1)%6], 'III':base_a[(idx_reel+2)%6], 
+                                       'IV':base_a[(idx_reel+3)%6], 'V':base_a[(idx_reel+4)%6], 'VI':base_a[(idx_reel+5)%6]}
+                            rot_b_d = {'I':base_b[(idx_reel+1-offset)%6], 'II':base_b[(idx_reel+2-offset)%6], 'III':base_b[(idx_reel+3-offset)%6], 
+                                       'IV':base_b[(idx_reel+4-offset)%6], 'V':base_b[(idx_reel+5-offset)%6], 'VI':base_b[(idx_reel+0-offset)%6]}
 
-                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_receveur, n_d, rot_b_serveur, serveur='B')
+                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_d, n_d, rot_b_d, serveur='B')
                             
                             if m_b:
                                 s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
@@ -1352,7 +1346,7 @@ if st.session_state.PDF_FILENAME:
                                 axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='darkorange')
                                 axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
                                 axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_diff_b}\n\nTotal: {sum(m_b)-sum(m_a):+d}", family='monospace', weight='bold', va='top')
-
+                        
                         st.pyplot(fig_rot)
 
         # --- PAGE 2 : TABLEAUX DES SETS ---
