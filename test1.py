@@ -1292,7 +1292,6 @@ if st.session_state.PDF_FILENAME:
                         tracer_duel_equipes(df_a, df_b, titre=f"Évolution {tab_name}", nom_g=n_g, nom_d=n_d)
 
                         # --- ANALYSE ROTATIONS (TRIÉES : X À LA FIN) ---
-                        # Extraction des joueurs de base (ligne 0 du DataFrame)
                         v_a, v_b = df_a.iloc[0].values, df_b.iloc[0].values
                         base_a = [v_a[i%6] for i in range(6)]
                         base_b = [v_b[i%6] for i in range(6)]
@@ -1310,61 +1309,53 @@ if st.session_state.PDF_FILENAME:
 
                         ordre_affichage = indices_normaux + indices_avec_x
 
-                        # 2. Détection du serveur initial du match (pour le tout premier terrain)
-                        # On regarde si l'équipe A a un 'X' ou un score en (4,0)
+                        # Détection du serveur initial du match (case 4,0)
                         a_sert_en_premier = str(df_a.iloc[4, 0]).upper().strip() != 'X'
 
-                        # Création de la figure (6 rotations, 2 colonnes de terrains)
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
 
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
-                            # Calcul des séquences de points pour cette rotation
                             m_a, m_b = calculer_sequences_precises(df_a, df_b, idx_reel)
                             
-                            # --- TERRAIN DE GAUCHE : ÉQUIPE A AU SERVICE ---
-                            # Cas spécial : Au tout début du match (idx_reel 0), si A sert :
-                            # A est en rotation 0, et B est en RÉCEPTION (elle n'a pas encore tourné).
-                            if idx_reel == 0 and a_sert_en_premier:
-                                rot_a_srv = obtenir_rotation_positions(base_a, 0, doit_tourner=False)
-                                rot_b_rcv = obtenir_rotation_positions(base_b, 0, doit_tourner=False)
-                            else:
-                                # Logique normale : A tourne pour servir seulement si elle a commencé le set en réception
-                                rot_a_srv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=not a_sert_en_premier)
-                                # B reçoit : elle reste sur sa rotation actuelle de la colonne
-                                rot_b_rcv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
+                            # --- TERRAIN GAUCHE : SERVEUR A ---
+                            # A sert : elle tourne seulement si elle a commencé le set en réception
+                            tourne_a_pour_servir = not a_sert_en_premier
+                            rot_a_srv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=tourne_a_pour_servir)
+                            
+                            # B reçoit : elle ne tourne JAMAIS sur le service adverse, elle reste en rotation de base
+                            rot_b_rcv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
                             
                             dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_srv, n_d, rot_b_rcv, serveur='A')
 
-                            # Affichage des statistiques (Terrain Gauche)
+                            # (Affichage stats m_a...)
                             if m_a:
-                                s_m_a = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)])
-                                s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
+                                s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
                                 s_diff = "\n".join([f"{int(va)-int(vb)}" for va,vb in zip(m_a,m_b)])
                                 axes[idx_affichage,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
                                 axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='salmon')
                                 axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
 
-                            # --- TERRAIN DE DROITE : ÉQUIPE B AU SERVICE ---
-                            # Pour le terrain de droite, l'équipe B vient de gagner le side-out :
-                            # Elle effectue sa rotation (+1) par rapport à sa position de réception de gauche.
-                            rot_a_rcv_droite = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=False)
+                            # --- TERRAIN DROITE : SERVEUR B ---
+                            # A reçoit : elle reste sur sa rotation de base pour ce bloc (idx_reel)
+                            rot_a_rcv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=False)
                             
-                            # B tourne pour servir si elle a commencé en réception (Side-out automatique)
-                            tourne_b = a_sert_en_premier 
-                            rot_b_srv_droite = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=tourne_b)
+                            # B sert : elle tourne seulement si elle a commencé le set en réception
+                            # (ce qui est le cas si A a servi en premier)
+                            tourne_b_pour_servir = a_sert_en_premier
+                            rot_b_srv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=tourne_b_pour_servir)
                             
-                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_rcv_droite, n_d, rot_b_srv_droite, serveur='B')
+                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_rcv, n_d, rot_b_srv, serveur='B')
 
-                            # Affichage des statistiques (Terrain Droite)
+                            # (Affichage stats m_b...)
                             if m_b:
-                                s_m_a = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)])
-                                s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
+                                s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
                                 s_diff_b = "\n".join([f"{int(vb)-int(va)}" for va,vb in zip(m_a,m_b)])
                                 axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='darkorange')
                                 axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
                                 axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_diff_b}\n\nTotal: {sum(m_b)-sum(m_a):+d}", family='monospace', weight='bold', va='top')
 
                         st.pyplot(fig_rot)
+
         # --- PAGE 2 : TABLEAUX DES SETS ---
         elif page == "📋 Tableaux des Sets":
             st.header("📋 Tableaux Finaux par Set")
