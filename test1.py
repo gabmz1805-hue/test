@@ -1292,65 +1292,74 @@ if st.session_state.PDF_FILENAME:
                         tracer_duel_equipes(df_a, df_b, titre=f"Évolution {tab_name}", nom_g=n_g, nom_d=n_d)
 
                         # --- ANALYSE ROTATIONS (TRIÉES : X À LA FIN) ---
+                        # Extraction des joueurs de base (ligne 0 du DataFrame)
                         v_a, v_b = df_a.iloc[0].values, df_b.iloc[0].values
                         base_a = [v_a[i%6] for i in range(6)]
                         base_b = [v_b[i%6] for i in range(6)]
 
-                        # Tri des colonnes (X à la fin)
-                        indices_normaux, indices_avec_x = [], []
+                        # 1. Logique de tri pour mettre les rotations avec 'X' à la fin du graphique
+                        indices_normaux = []
+                        indices_avec_x = []
                         for i in range(6):
-                            col_str_a = str(df_a.iloc[4, i]).upper().strip()
-                            col_str_b = str(df_b.iloc[4, i]).upper().strip()
-                            if col_str_a == 'X' or col_str_b == 'X':
+                            col_str_a = df_a.iloc[4:, i].astype(str).str.upper().values
+                            col_str_b = df_b.iloc[4:, i].astype(str).str.upper().values
+                            if 'X' in col_str_a or 'X' in col_str_b:
                                 indices_avec_x.append(i)
                             else:
                                 indices_normaux.append(i)
+
                         ordre_affichage = indices_normaux + indices_avec_x
 
+                        # 2. Détection du serveur initial du match (pour le tout premier terrain)
+                        # Si la case (4,0) de l'équipe A n'est pas un 'X', c'est elle qui sert en premier.
+                        a_sert_en_premier = str(df_a.iloc[4, 0]).upper().strip() != 'X'
+
+                        # Création de la figure
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
 
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
+                            # Calcul des séquences de points
                             m_a, m_b = calculer_sequences_precises(df_a, df_b, idx_reel)
                             
-                            # Vérification : Est-ce que l'équipe sert réellement dans cette rotation ?
-                            a_ne_sert_pas = str(df_a.iloc[4, idx_reel]).upper().strip() == 'X'
-                            b_ne_sert_pas = str(df_b.iloc[4, idx_reel]).upper().strip() == 'X'
-
-                            # --- TERRAIN GAUCHE (A au service) ---
-                            if not a_ne_sert_pas:
-                                # Si A a des numéros, elle sert dans sa rotation actuelle
-                                rot_a_srv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=False)
+                            # --- TERRAIN DE GAUCHE : ÉQUIPE A AU SERVICE ---
+                            # Cas spécial : Au tout début du match (idx_reel 0), si A sert, 
+                            # B est en réception pure (pas de rotation encore).
+                            if idx_reel == 0 and a_sert_en_premier:
+                                rot_a_srv = obtenir_rotation_positions(base_a, 0, doit_tourner=False)
+                                rot_b_rcv = obtenir_rotation_positions(base_b, 0, doit_tourner=False)
+                            else:
+                                # Logique normale : A tourne si elle a commencé le set en réception
+                                rot_a_srv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=not a_sert_en_premier)
+                                # B reçoit : elle ne tourne pas sur le service adverse
                                 rot_b_rcv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
-                                dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_srv, n_d, rot_b_rcv, serveur='A')
-                                
-                                if m_a:
-                                    s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
-                                    s_diff = "\n".join([f"{int(va)-int(vb)}" for va,vb in zip(m_a,m_b)])
-                                    axes[idx_affichage,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
-                                    axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='salmon')
-                                    axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
-                            else:
-                                axes[idx_affichage, 0].text(0.5, 0.5, "PAS DE SERVICE (X)", ha='center', va='center', fontsize=14, color='gray')
-                                axes[idx_affichage, 0].axis('off')
+                            
+                            dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_srv, n_d, rot_b_rcv, serveur='A')
 
-                            # --- TERRAIN DROITE (B au service) ---
-                            if not b_ne_sert_pas:
-                                # Si B a des numéros, elle sert. 
-                                # Si elle était en réception juste avant (Side-out), elle a tourné.
-                                # Ici on suit scrupuleusement l'index de la colonne idx_reel
-                                rot_b_srv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
-                                rot_a_rcv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=False)
-                                dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_rcv, n_d, rot_b_srv, serveur='B')
+                            # Affichage des statistiques (Gauche)
+                            if m_a:
+                                s_m_a = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)])
+                                s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
+                                s_diff = "\n".join([f"{int(va)-int(vb)}" for va,vb in zip(m_a,m_b)])
+                                axes[idx_affichage,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
+                                axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='salmon')
+                                axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
 
-                                if m_b:
-                                    s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
-                                    s_diff_b = "\n".join([f"{int(vb)-int(va)}" for va,vb in zip(m_a,m_b)])
-                                    axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='darkorange')
-                                    axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
-                                    axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_diff_b}\n\nTotal: {sum(m_b)-sum(m_a):+d}", family='monospace', weight='bold', va='top')
-                            else:
-                                axes[idx_affichage, 1].text(0.5, 0.5, "PAS DE SERVICE (X)", ha='center', va='center', fontsize=14, color='gray')
-                                axes[idx_affichage, 1].axis('off')
+                            # --- TERRAIN DE DROITE : ÉQUIPE B AU SERVICE ---
+                            # Pour le terrain de droite, l'équipe B vient de gagner le side-out :
+                            # Elle DOIT donc avoir tourné (+1) par rapport à sa position de réception.
+                            rot_a_rcv_droite = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=False)
+                            rot_b_srv_droite = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=True)
+                            
+                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_rcv_droite, n_d, rot_b_srv_droite, serveur='B')
+
+                            # Affichage des statistiques (Droite)
+                            if m_b:
+                                s_m_a = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)])
+                                s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
+                                s_diff_b = "\n".join([f"{int(vb)-int(va)}" for va,vb in zip(m_a,m_b)])
+                                axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='darkorange')
+                                axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
+                                axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_diff_b}\n\nTotal: {sum(m_b)-sum(m_a):+d}", family='monospace', weight='bold', va='top')
 
                         st.pyplot(fig_rot)
 
