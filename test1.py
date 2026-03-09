@@ -1296,7 +1296,7 @@ if st.session_state.PDF_FILENAME:
                         base_a = [v_a[i%6] for i in range(6)]
                         base_b = [v_b[i%6] for i in range(6)]
 
-                        # On trie les colonnes pour mettre les 'X' à la fin du graphique
+                        # Tri des colonnes (X à la fin)
                         indices_normaux = []
                         indices_avec_x = []
                         for i in range(6):
@@ -1306,29 +1306,30 @@ if st.session_state.PDF_FILENAME:
                                 indices_avec_x.append(i)
                             else:
                                 indices_normaux.append(i)
-
                         ordre_affichage = indices_normaux + indices_avec_x
 
-                        # Détection pour savoir si l'équipe a commencé le set en réception ('X' en case 1)
-                        a_commence_en_reception = str(df_a.iloc[4, 0]).upper().strip() == 'X'
-                        b_commence_en_reception = str(df_b.iloc[4, 0]).upper().strip() == 'X'
+                        # Détection précise du Side-out initial
+                        # On vérifie si la toute première action du set est une réception (X)
+                        a_side_out_initial = str(df_a.iloc[4, 0]).upper().strip() == 'X'
+                        b_side_out_initial = str(df_b.iloc[4, 0]).upper().strip() == 'X'
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
 
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
                             m_a, m_b = calculer_sequences_precises(df_a, df_b, idx_reel)
                             
-                            # --- TERRAIN DE GAUCHE : SERVEUR A ---
-                            # Si A a commencé en réception, elle a tourné pour son premier service (colonne 0).
-                            # On applique ce décalage UNIQUEMENT au serveur.
-                            doit_tourner_a = a_commence_en_reception
+                            # --- TERRAIN GAUCHE (A au service) ---
+                            # A ne tourne que si elle a commencé le set en réception (Side-out)
+                            # L'index idx_reel (0 à 5) correspond aux colonnes I à VI
+                            doit_tourner_a = a_side_out_initial
                             rot_a_srv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=doit_tourner_a)
                             
-                            # Sur ce terrain, B reçoit : elle reste sur sa position "normale" pour cette phase.
+                            # B reçoit sur le service de A : B ne tourne jamais pendant qu'elle reçoit
                             rot_b_rcv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
                             
                             dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_srv, n_d, rot_b_rcv, serveur='A')
 
+                            # --- AFFICHAGE STATS GAUCHE ---
                             if m_a:
                                 s_m_a = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)])
                                 s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
@@ -1337,16 +1338,17 @@ if st.session_state.PDF_FILENAME:
                                 axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='salmon')
                                 axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
 
-                            # --- TERRAIN DE DROITE : SERVEUR B ---
-                            # Si B a commencé en réception (car A servait), B a tourné pour son premier service.
-                            doit_tourner_b = b_commence_en_reception
+                            # --- TERRAIN DROITE (B au service) ---
+                            # B ne tourne que si elle a commencé le set en réception (Side-out)
+                            doit_tourner_b = b_side_out_initial
                             rot_b_srv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=doit_tourner_b)
                             
-                            # Sur ce terrain, A reçoit : elle reste sur sa position "normale" pour cette phase.
+                            # A reçoit sur le service de B : A ne tourne jamais pendant qu'elle reçoit
                             rot_a_rcv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=False)
                             
                             dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_rcv, n_d, rot_b_srv, serveur='B')
 
+                            # --- AFFICHAGE STATS DROITE ---
                             if m_b:
                                 s_m_a = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)])
                                 s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
