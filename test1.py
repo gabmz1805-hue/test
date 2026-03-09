@@ -1299,14 +1299,10 @@ if st.session_state.PDF_FILENAME:
                         # 1. Tri (X à la fin)
                         indices_normaux, indices_avec_x = [], []
                         for i in range(6):
-                            col_str_a = str(df_a.iloc[4, i]).upper().strip()
-                            col_str_b = str(df_b.iloc[4, i]).upper().strip()
-                            if col_str_a == 'X' or col_str_b == 'X': indices_avec_x.append(i)
+                            col_val = str(df_a.iloc[4, i]).upper().strip()
+                            if col_val == 'X': indices_avec_x.append(i)
                             else: indices_normaux.append(i)
                         ordre_affichage = indices_normaux + indices_avec_x
-
-                        # 2. Qui a le 'X' au tout début (Colonne I / index 0)
-                        a_recoit_en_premier = str(df_a.iloc[4, 0]).upper().strip() == 'X'
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
 
@@ -1314,13 +1310,16 @@ if st.session_state.PDF_FILENAME:
                             m_a, m_b = calculer_sequences_precises(df_a, df_b, idx_reel)
                             
                             # --- TERRAIN GAUCHE : A AU SERVICE ---
-                            # Si A a commencé par un 'X', elle a dû tourner pour son 1er service (col 0)
-                            # Sinon, elle est sur sa position de base
-                            tourne_a = a_recoit_en_premier
-                            rot_a_srv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=tourne_a)
-                            
-                            # B REÇOIT : Elle ne tourne JAMAIS sur le service de l'autre
-                            rot_b_rcv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
+                            # Pour le TOUT PREMIER service du match (idx_reel == 0), 
+                            # on force les positions de BASE pour tout le monde.
+                            if idx_reel == 0:
+                                rot_a_srv = obtenir_rotation_positions(base_a, 0, doit_tourner=False)
+                                rot_b_rcv = obtenir_rotation_positions(base_b, 0, doit_tourner=False)
+                            else:
+                                # Pour les suivants, A tourne si elle a récupéré le service (X en col 0)
+                                a_recoit_en_premier = str(df_a.iloc[4, 0]).upper().strip() == 'X'
+                                rot_a_srv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=a_recoit_en_premier)
+                                rot_b_rcv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
                             
                             dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_srv, n_d, rot_b_rcv, serveur='A')
 
@@ -1333,14 +1332,11 @@ if st.session_state.PDF_FILENAME:
                                 axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
 
                             # --- TERRAIN DROITE : B AU SERVICE ---
-                            # A REÇOIT : Elle reste sur sa position "actuelle" (la même que sur le terrain de gauche)
-                            rot_a_rcv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=tourne_a)
+                            # A REÇOIT : Elle reste sur sa position du terrain de gauche
+                            rot_a_rcv = rot_a_srv 
                             
-                            # B SERT : Elle récupère la balle, DONC ELLE TOURNE par rapport à sa position de réception
-                            # Si elle a commencé par un 'X', elle est déjà décalée de 1 pour son service
-                            # Si elle n'a PAS de 'X', elle tourne maintenant pour son service
-                            tourne_b = not a_recoit_en_premier
-                            rot_b_srv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=tourne_b)
+                            # B SERT : Elle vient de gagner le side-out, DONC ELLE TOURNE (+1)
+                            rot_b_srv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=True)
                             
                             dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_rcv, n_d, rot_b_srv, serveur='B')
 
