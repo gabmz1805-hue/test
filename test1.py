@@ -1305,25 +1305,31 @@ if st.session_state.PDF_FILENAME:
                             else: indices_normaux.append(i)
 
                         ordre_affichage = indices_normaux + indices_avec_x
-                        
-                        # Si 'X' est à gauche au départ, l'équipe A reçoit (décalage de 1 pour A)
-                        val_g_start = str(df_a.iloc[4, 0]).upper().strip()
-                        offset = 1 if val_g_start == 'X' else 0
+
+                        # Détection de l'état initial pour chaque équipe dans la colonne I (index 0)
+                        # Si 'X', l'équipe commence en réception et devra tourner pour son 1er service.
+                        a_commence_en_reception = str(df_a.iloc[4, 0]).upper().strip() == 'X'
+                        b_commence_en_reception = str(df_b.iloc[4, 0]).upper().strip() == 'X'
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
 
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
                             m_a, m_b = calculer_sequences_precises(df_a, df_b, idx_reel)
                             
+                            # --- LOGIQUE ROTATION ÉQUIPE GAUCHE (A) ---
+                            # On applique le décalage (+1) UNIQUEMENT si elle a commencé le set par un 'X'
+                            off_a = 1 if a_commence_en_reception else 0
+                            rot_a = {'I':base_a[(idx_reel+off_a)%6], 'II':base_a[(idx_reel+off_a+1)%6], 'III':base_a[(idx_reel+off_a+2)%6], 
+                                    'IV':base_a[(idx_reel+off_a+3)%6], 'V':base_a[(idx_reel+off_a+4)%6], 'VI':base_a[(idx_reel+off_a+5)%6]}
+                            
+                            # --- LOGIQUE ROTATION ÉQUIPE DROITE (B) ---
+                            # On applique le décalage (+1) UNIQUEMENT si elle a commencé le set par un 'X'
+                            off_b = 1 if b_commence_en_reception else 0
+                            rot_b = {'I':base_b[(idx_reel+off_b)%6], 'II':base_b[(idx_reel+off_b+1)%6], 'III':base_b[(idx_reel+off_b+2)%6], 
+                                    'IV':base_b[(idx_reel+off_b+3)%6], 'V':base_b[(idx_reel+off_b+4)%6], 'VI':base_b[(idx_reel+off_b+5)%6]}
+
                             # --- TERRAIN GAUCHE : SERVEUR A ---
-                            # A sert (position de base + offset). B reçoit (position base).
-                            rot_a_g = {'I':base_a[(idx_reel+offset)%6], 'II':base_a[(idx_reel+offset+1)%6], 'III':base_a[(idx_reel+offset+2)%6], 
-                                       'IV':base_a[(idx_reel+offset+3)%6], 'V':base_a[(idx_reel+offset+4)%6], 'VI':base_a[(idx_reel+offset+5)%6]}
-                            rot_b_g = {'I':base_b[idx_reel%6], 'II':base_b[(idx_reel+1)%6], 'III':base_b[(idx_reel+2)%6], 
-                                       'IV':base_b[(idx_reel+3)%6], 'V':base_b[(idx_reel+4)%6], 'VI':base_b[(idx_reel+5)%6]}
-                            
-                            dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_g, n_d, rot_b_g, serveur='A')
-                            
+                            dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a, n_d, rot_b, serveur='A')
                             if m_a:
                                 s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
                                 s_diff = "\n".join([f"{int(va)-int(vb)}" for va,vb in zip(m_a,m_b)])
@@ -1332,21 +1338,14 @@ if st.session_state.PDF_FILENAME:
                                 axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
 
                             # --- TERRAIN DROITE : SERVEUR B ---
-                            # A reçoit (position base). B sert (position base + rotation inverse).
-                            rot_a_d = {'I':base_a[idx_reel%6], 'II':base_a[(idx_reel+1)%6], 'III':base_a[(idx_reel+2)%6], 
-                                       'IV':base_a[(idx_reel+3)%6], 'V':base_a[(idx_reel+4)%6], 'VI':base_a[(idx_reel+5)%6]}
-                            rot_b_d = {'I':base_b[(idx_reel+1-offset)%6], 'II':base_b[(idx_reel+2-offset)%6], 'III':base_b[(idx_reel+3-offset)%6], 
-                                       'IV':base_b[(idx_reel+4-offset)%6], 'V':base_b[(idx_reel+5-offset)%6], 'VI':base_b[(idx_reel+0-offset)%6]}
-
-                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_d, n_d, rot_b_d, serveur='B')
-                            
+                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a, n_d, rot_b, serveur='B')
                             if m_b:
                                 s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
                                 s_diff_b = "\n".join([f"{int(vb)-int(va)}" for va,vb in zip(m_a,m_b)])
                                 axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='darkorange')
                                 axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a}\n\nTotal: {sum(m_a)}", family='monospace', weight='bold', va='top', color='royalblue')
                                 axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_diff_b}\n\nTotal: {sum(m_b)-sum(m_a):+d}", family='monospace', weight='bold', va='top')
-                        
+
                         st.pyplot(fig_rot)
 
         # --- PAGE 2 : TABLEAUX DES SETS ---
