@@ -1296,38 +1296,35 @@ if st.session_state.PDF_FILENAME:
                         base_a = [v_a[i%6] for i in range(6)]
                         base_b = [v_b[i%6] for i in range(6)]
 
-                        # 1. Logique de tri pour mettre les rotations avec 'X' à la fin du graphique
-                        indices_normaux = []
-                        indices_avec_x = []
+                        # 1. Tri (X à la fin)
+                        indices_normaux, indices_avec_x = [], []
                         for i in range(6):
-                            col_str_a = df_a.iloc[4:, i].astype(str).str.upper().values
-                            col_str_b = df_b.iloc[4:, i].astype(str).str.upper().values
-                            if 'X' in col_str_a or 'X' in col_str_b:
-                                indices_avec_x.append(i)
-                            else:
-                                indices_normaux.append(i)
-
+                            col_str_a = str(df_a.iloc[4, i]).upper().strip()
+                            col_str_b = str(df_b.iloc[4, i]).upper().strip()
+                            if col_str_a == 'X' or col_str_b == 'X': indices_avec_x.append(i)
+                            else: indices_normaux.append(i)
                         ordre_affichage = indices_normaux + indices_avec_x
 
-                        # Détection du serveur initial du match (case 4,0)
-                        a_sert_en_premier = str(df_a.iloc[4, 0]).upper().strip() != 'X'
+                        # 2. Qui a le 'X' au tout début (Colonne I / index 0)
+                        a_recoit_en_premier = str(df_a.iloc[4, 0]).upper().strip() == 'X'
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
 
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
                             m_a, m_b = calculer_sequences_precises(df_a, df_b, idx_reel)
                             
-                            # --- TERRAIN GAUCHE : SERVEUR A ---
-                            # A sert : elle tourne seulement si elle a commencé le set en réception
-                            tourne_a_pour_servir = not a_sert_en_premier
-                            rot_a_srv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=tourne_a_pour_servir)
+                            # --- TERRAIN GAUCHE : A AU SERVICE ---
+                            # Si A a commencé par un 'X', elle a dû tourner pour son 1er service (col 0)
+                            # Sinon, elle est sur sa position de base
+                            tourne_a = a_recoit_en_premier
+                            rot_a_srv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=tourne_a)
                             
-                            # B reçoit : elle ne tourne JAMAIS sur le service adverse, elle reste en rotation de base
+                            # B REÇOIT : Elle ne tourne JAMAIS sur le service de l'autre
                             rot_b_rcv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
                             
                             dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_srv, n_d, rot_b_rcv, serveur='A')
 
-                            # (Affichage stats m_a...)
+                            # (Stats A...)
                             if m_a:
                                 s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
                                 s_diff = "\n".join([f"{int(va)-int(vb)}" for va,vb in zip(m_a,m_b)])
@@ -1335,18 +1332,19 @@ if st.session_state.PDF_FILENAME:
                                 axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(m_b)}", family='monospace', weight='bold', va='top', color='salmon')
                                 axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_diff}\n\nTotal: {sum(m_a)-sum(m_b):+d}", family='monospace', weight='bold', va='top')
 
-                            # --- TERRAIN DROITE : SERVEUR B ---
-                            # A reçoit : elle reste sur sa rotation de base pour ce bloc (idx_reel)
-                            rot_a_rcv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=False)
+                            # --- TERRAIN DROITE : B AU SERVICE ---
+                            # A REÇOIT : Elle reste sur sa position "actuelle" (la même que sur le terrain de gauche)
+                            rot_a_rcv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=tourne_a)
                             
-                            # B sert : elle tourne seulement si elle a commencé le set en réception
-                            # (ce qui est le cas si A a servi en premier)
-                            tourne_b_pour_servir = a_sert_en_premier
-                            rot_b_srv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=tourne_b_pour_servir)
+                            # B SERT : Elle récupère la balle, DONC ELLE TOURNE par rapport à sa position de réception
+                            # Si elle a commencé par un 'X', elle est déjà décalée de 1 pour son service
+                            # Si elle n'a PAS de 'X', elle tourne maintenant pour son service
+                            tourne_b = not a_recoit_en_premier
+                            rot_b_srv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=tourne_b)
                             
                             dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_rcv, n_d, rot_b_srv, serveur='B')
 
-                            # (Affichage stats m_b...)
+                            # (Stats B...)
                             if m_b:
                                 s_m_a, s_m_b = "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_a)]), "\n".join([f"{k+1}   {v}" for k,v in enumerate(m_b)])
                                 s_diff_b = "\n".join([f"{int(vb)-int(va)}" for va,vb in zip(m_a,m_b)])
