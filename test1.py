@@ -1377,7 +1377,7 @@ if st.session_state.PDF_FILENAME:
                           axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a}\n\nTotal: {sum(m_a)}", color='royalblue', weight='bold', family='monospace')
                           axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_dif_inv}\n\nTotal: {sum(m_b)-sum(m_a):+d}", weight='bold', family='monospace')
 
-                      st.pyplot(fig_rot)
+                        st.pyplot(fig_rot)
 
         # --- PAGE 2 : TABLEAUX DES SETS ---
         elif page == "📋 Tableaux des Sets":
