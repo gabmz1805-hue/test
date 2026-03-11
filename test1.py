@@ -1088,20 +1088,18 @@ def obtenir_rotation_positions(base_joueurs, index_rotation, doit_tourner=False)
     }
 
 def to_f(val):
-    """Convertit X ou vide en 0.0, sinon float."""
+    """Convertit X, vide ou NaN en 0.0, sinon float."""
     s = str(val).upper().strip()
-    if s == 'X' or s == '' or s == 'NAN': return 0.0
+    if s in ['X', '', 'NAN', 'NONE']: return 0.0
     try: return float(s.replace(',', '.'))
     except: return 0.0
 
-def get_last_s_prev(df, col_idx):
-    """Récupère C5R4 (fin du set précédent) si col_idx < 0, sinon fin de colonne col_idx."""
-    if col_idx < 0:
-        # On simule la fin du set précédent (C5 R4)
-        return to_f(df.iloc[4, 5]) 
-    # Sinon dernier score de la colonne demandée
-    vals = [to_f(v) for v in df.iloc[4:, col_idx] if str(v).strip() != '' and str(v).upper() != 'X']
-    return vals[-1] if vals else 0.0
+def get_val_secure(df, r, c):
+    """Récupère une valeur de cellule en toute sécurité."""
+    try:
+        return to_f(df.iloc[r, c])
+    except:
+        return 0.0
 
 # ==================================================
 # Bouton de téléchargement
@@ -1318,39 +1316,30 @@ if st.session_state.PDF_FILENAME:
                         ordre_affichage = indices_normaux + indices_avec_x
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
-                        # On identifie si l'équipe A a le X (donc commence en réception)
                         x_equipe_a = str(df_a.iloc[4, 0]).upper().strip() == 'X'
 
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
                             
-                            # =================================================================
-                            # BLOC 1 : STATS TERRAIN GAUCHE (Équipe A est considérée au service)
-                            # =================================================================
+                            # ==========================================
+                            # BLOC 1 : TERRAIN GAUCHE (Équipe A sert)
+                            # ==========================================
                             m_a_g, m_b_g = [], []
                             for r in range(4, len(df_a)):
                                 v_a, v_b = str(df_a.iloc[r, idx_reel]).strip(), str(df_b.iloc[r, idx_reel]).strip()
                                 if v_a != '' or v_b != '':
-                                    if idx_reel == 0:
-                                        if r == 4: # Séquence 1 (C0R4)
-                                            m_a_g.append(to_f(v_a))
-                                            m_b_g.append(to_f(v_b))
-                                        else: # Séquences suivantes (CnRn - C5R4)
-                                            m_a_g.append(to_f(v_a) - get_last_s_prev(df_a, 5))
-                                            m_b_g.append(to_f(v_b) - get_last_s_prev(df_b, 5))
-                                    else:
-                                        if r == 4: # Séquence 1 (CnR4 - Cn-1R4)
-                                            m_a_g.append(to_f(v_a) - to_f(df_a.iloc[4, idx_reel-1]))
-                                            m_b_g.append(to_f(v_b) - to_f(df_b.iloc[4, idx_reel-1]))
-                                        else: # Séquences suivantes (CnRn - Cn-1Rn)
-                                            m_a_g.append(to_f(v_a) - to_f(df_a.iloc[r, idx_reel-1]))
-                                            m_b_g.append(to_f(v_b) - to_f(df_b.iloc[r, idx_reel-1]))
+                                    if r == 4: # Séquence 1
+                                        m_a_g.append(to_f(v_a))
+                                        m_b_g.append(to_f(v_b))
+                                    else: # Séquences 2, 3, 4... (CnRn - C5Rn-1)
+                                        # On soustrait le score final adverse de la ligne précédente (index 5 = Col VI)
+                                        m_a_g.append(to_f(v_a) - get_val_secure(df_b, r-1, 5))
+                                        m_b_g.append(to_f(v_b) - get_val_secure(df_a, r-1, 5))
 
                             # Affichage Terrain Gauche
                             rot_a_g = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=x_equipe_a)
                             rot_b_g = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
                             dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_g, n_d, rot_b_g, serveur='A')
                             
-                            # Alignement des séquences
                             max_l = max(len(m_a_g), len(m_b_g))
                             m_a_g += [0.0] * (max_l - len(m_a_g))
                             m_b_g += [0.0] * (max_l - len(m_b_g))
@@ -1363,31 +1352,22 @@ if st.session_state.PDF_FILENAME:
                             axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {int(sum(m_b_g))}", color='salmon', weight='bold', family='monospace', va='top')
                             axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_dif}\n\nTotal: {int(sum(m_a_g)-sum(m_b_g)):+d}", weight='bold', family='monospace', va='top')
 
-                            # =================================================================
-                            # BLOC 2 : STATS TERRAIN DROITE (Équipe B est considérée au service)
-                            # =================================================================
+                            # ==========================================
+                            # BLOC 2 : TERRAIN DROITE (Équipe B sert)
+                            # ==========================================
                             m_a_d, m_b_d = [], []
                             for r in range(4, len(df_b)):
                                 v_a, v_b = str(df_a.iloc[r, idx_reel]).strip(), str(df_b.iloc[r, idx_reel]).strip()
                                 if v_a != '' or v_b != '':
-                                    if idx_reel == 0:
-                                        if r == 4: # Séquence 1
-                                            m_a_d.append(to_f(v_a))
-                                            m_b_d.append(to_f(v_b))
-                                        else: # Séquences suivantes
-                                            m_a_d.append(to_f(v_a) - get_last_s_prev(df_a, 5))
-                                            m_b_d.append(to_f(v_b) - get_last_s_prev(df_b, 5))
-                                    else:
-                                        if r == 4:
-                                            # Logique spéciale : B marquée = Valeur brute | A encaissée = Soustraction Col N - Col N-1
-                                            m_b_d.append(to_f(v_b)) 
-                                            m_a_d.append(to_f(v_a) - to_f(df_a.iloc[4, idx_reel-1]))
-                                        else:
-                                            m_b_d.append(to_f(v_b) - to_f(df_b.iloc[r, idx_reel-1]))
-                                            m_a_d.append(to_f(v_a) - to_f(df_a.iloc[r, idx_reel-1]))
+                                    if r == 4: # Séquence 1 (Valeurs brutes C0R4)
+                                        m_b_d.append(to_f(v_b))
+                                        m_a_d.append(to_f(v_a))
+                                    else: # Séquences suivantes (CnRn - C5Rn-1)
+                                        # Même logique décalée : Score actuel - Score adverse final précédent
+                                        m_b_d.append(to_f(v_b) - get_val_secure(df_a, r-1, 5))
+                                        m_a_d.append(to_f(v_a) - get_val_secure(df_b, r-1, 5))
 
                             # Affichage Terrain Droite
-                            # Side-out : B récupère le service, donc B tourne systématiquement
                             rot_b_d = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=True)
                             dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_g, n_d, rot_b_d, serveur='B')
                             
