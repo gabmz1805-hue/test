@@ -1325,56 +1325,63 @@ if st.session_state.PDF_FILENAME:
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
-                          # 1. Extraction des données brutes pour la colonne actuelle
-                          raw_a = extraire_points_rotation(df_a, idx_reel)
-                          raw_b = extraire_points_rotation(df_b, idx_reel)
+                          # --- 1. CALCULS POUR LE TERRAIN DE GAUCHE (Équipe Gserveur) ---
+                          # On prend la colonne actuelle (idx_reel) pour les deux équipes
+                          raw_pts_a_G = extraire_points_rotation(df_a, idx_reel)
+                          raw_pts_b_G = extraire_points_rotation(df_b, idx_reel)
                           
-                          # 2. Gains pour la rotation en cours
-                          gains_a = calculer_gains_reels(raw_a, df_a, idx_reel)
-                          gains_b = calculer_gains_reels(raw_b, df_b, idx_reel)
+                          g_marques_G = calculer_gains_reels(raw_pts_a_G, df_a, idx_reel)
+                          g_encaisses_G = calculer_gains_reels(raw_pts_b_G, df_b, idx_reel)
 
-                          # --- TERRAIN GAUCHE : ÉQUIPE A AU SERVICE ---
-                          # On utilise les positions initiales de cette rotation (idx_reel)
+                          # --- 2. CALCULS POUR LE TERRAIN DE DROITE (Équipe Dserveur après Rotation) ---
+                          # L'équipe de droite (B) SERT : on doit calculer ses points sur SA colonne de service (idx_reel)
+                          # L'équipe de gauche (A) REÇOIT : on calcule ses points encaissés sur sa colonne actuelle (idx_reel)
+                          # NOTE : Si B a un 'X' en col 0, son premier service réel est en col 1.
+                          
+                          raw_pts_b_D = extraire_points_rotation(df_b, idx_reel)
+                          g_marques_D = calculer_gains_reels(raw_pts_b_D, df_b, idx_reel)
+                          
+                          # Pour les encaissés de l'équipe de droite (B), ce sont les points marqués par A 
+                          # juste avant qu'elle ne perde le service (donc col idx_reel de l'équipe A)
+                          g_encaisses_D = g_marques_G 
+
+                          # --- TERRAIN GAUCHE : AFFICHAGE ---
                           if idx_reel == 0:
-                              rot_a_srv = obtenir_rotation_positions(base_a, 0, doit_tourner=False)
-                              rot_b_rcv = obtenir_rotation_positions(base_b, 0, doit_tourner=False)
+                              rot_a_G = obtenir_rotation_positions(base_a, 0, doit_tourner=False)
+                              rot_b_G = obtenir_rotation_positions(base_b, 0, doit_tourner=False)
                           else:
                               a_rec_prem = str(df_a.iloc[4, 0]).upper().strip() == 'X'
-                              rot_a_srv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=a_rec_prem)
-                              rot_b_rcv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
-
-                          dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_srv, n_d, rot_b_rcv, serveur='A')
-
-                          # Affichage Stats Gauche : A sert, B est dans sa position de réception
-                          if gains_a or gains_b:
-                              max_l = max(len(gains_a), len(gains_b))
-                              p_a = gains_a + [0]*(max_l - len(gains_a))
-                              p_b = gains_b + [0]*(max_l - len(gains_b))
-                              
-                              s_m_a = "\n".join([f"{k+1}  {v}" for k,v in enumerate(p_a)])
-                              s_m_b = "\n".join([f"{k+1}  {v}" for k,v in enumerate(p_b)])
-                              s_dif = "\n".join([f"{va-vb:+d}" for va,vb in zip(p_a, p_b)])
-                              
-                              axes[idx_affichage,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {sum(gains_a)}", color='royalblue', weight='bold')
-                              axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(gains_b)}", color='salmon', weight='bold')
-                              axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_dif}\n\nTotal: {sum(gains_a)-sum(gains_b):+d}", weight='bold')
-
-                          # --- TERRAIN DROITE : ÉQUIPE B AU SERVICE (APRÈS ROTATION) ---
-                          # L'équipe B a tournée, mais l'équipe A est restée dans la même position que tout à l'heure
-                          rot_a_rcv_fixe = rot_a_srv 
-                          rot_b_srv_tourne = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=True)
+                              rot_a_G = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=a_rec_prem)
+                              rot_b_G = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
                           
-                          dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_rcv_fixe, n_d, rot_b_srv_tourne, serveur='B')
+                          dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_G, n_d, rot_b_G, serveur='A')
 
-                          # Affichage Stats Droite : B sert avec ses nouvelles positions
-                          # On recalcule les stats encaissées pour A dans sa position fixe 
-                          # et les nouvelles stats marquées pour B qui vient de tourner.
-                          if gains_a or gains_b:
-                              s_dif_inv = "\n".join([f"{vb-va:+d}" for va,vb in zip(p_a, p_b)])
-                              
-                              axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n{s_m_b}\n\nTotal: {sum(gains_b)}", color='darkorange', weight='bold')
-                              axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a}\n\nTotal: {sum(gains_a)}", color='royalblue', weight='bold')
-                              axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_dif_inv}\n\nTotal: {sum(gains_b)-sum(gains_a):+d}", weight='bold')
+                          # Stats Gauche
+                          max_l_G = max(len(g_marques_G), len(g_encaisses_G))
+                          p_m_G = g_marques_G + [0]*(max_l_G - len(g_marques_G))
+                          p_e_G = g_encaisses_G + [0]*(max_l_G - len(g_encaisses_G))
+                          s_dif_G = "\n".join([f"{m-e:+d}" for m,e in zip(p_m_G, p_e_G)])
+                          
+                          axes[idx_affichage,0].text(1,-1.5, f"pts marqués\n" + "\n".join([f"{k+1} {v}" for k,v in enumerate(p_m_G)]), color='royalblue', weight='bold')
+                          axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n" + "\n".join([f"{k+1} {v}" for k,v in enumerate(p_e_G)]), color='salmon', weight='bold')
+                          axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_dif_G}\n\nTotal: {sum(g_marques_G)-sum(g_encaisses_G):+d}", weight='bold')
+
+                          # --- TERRAIN DROITE : AFFICHAGE ---
+                          # Équipe A ne tourne pas (reçoit), Équipe B tourne (sert)
+                          rot_a_D = rot_a_G
+                          rot_b_D = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=True)
+                          
+                          dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_D, n_d, rot_b_D, serveur='B')
+
+                          # Stats Droite : Performance de B au service
+                          max_l_D = max(len(g_marques_D), len(g_encaisses_D))
+                          p_m_D = g_marques_D + [0]*(max_l_D - len(g_marques_D))
+                          p_e_D = g_encaisses_D + [0]*(max_l_D - len(g_encaisses_D))
+                          s_dif_D = "\n".join([f"{m-e:+d}" for m,e in zip(p_m_D, p_e_D)])
+
+                          axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n" + "\n".join([f"{k+1} {v}" for k,v in enumerate(p_m_D)]), color='darkorange', weight='bold')
+                          axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n" + "\n".join([f"{k+1} {v}" for k,v in enumerate(p_e_D)]), color='royalblue', weight='bold')
+                          axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_dif_D}\n\nTotal: {sum(g_marques_D)-sum(g_encaisses_D):+d}", weight='bold')
 
                         st.pyplot(fig_rot)
 
