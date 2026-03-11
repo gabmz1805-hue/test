@@ -1087,17 +1087,14 @@ def obtenir_rotation_positions(base_joueurs, index_rotation, doit_tourner=False)
         'VI':  base_joueurs[(idx + 5) % 6]
     }
 
-def to_f(val):
-    """Convertit X, vide ou NaN en 0.0, sinon float."""
-    s = str(val).upper().strip()
-    if s in ['X', '', 'NAN', 'NONE']: return 0.0
-    try: return float(s.replace(',', '.'))
-    except: return 0.0
-
-def get_val_secure(df, r, c):
-    """Récupère une valeur de cellule en toute sécurité."""
+def clean_val(df, r, c):
+    """Récupère proprement la valeur numérique d'une cellule du tableau final."""
     try:
-        return to_f(df.iloc[r, c])
+        val = str(df.iloc[r, c]).upper().strip()
+        if val in ['X', '', 'NAN', 'NONE']: return 0.0
+        # On ne garde que les chiffres et le séparateur décimal
+        val = "".join(char for char in val if char.isdigit() or char in '.,')
+        return float(val.replace(',', '.'))
     except:
         return 0.0
 
@@ -1320,68 +1317,71 @@ if st.session_state.PDF_FILENAME:
 
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
                             
-                            # ==========================================
-                            # BLOC 1 : TERRAIN GAUCHE (Équipe A sert)
-                            # ==========================================
+                            # --- TERRAIN GAUCHE (A sert) ---
                             m_a_g, m_b_g = [], []
+                            # On parcourt les lignes de score du tableau final
                             for r in range(4, len(df_a)):
-                                v_a, v_b = str(df_a.iloc[r, idx_reel]).strip(), str(df_b.iloc[r, idx_reel]).strip()
-                                if v_a != '' or v_b != '':
-                                    if r == 4: # Séquence 1
-                                        m_a_g.append(to_f(v_a))
-                                        m_b_g.append(to_f(v_b))
-                                    else: # Séquences 2, 3, 4... (CnRn - C5Rn-1)
-                                        # On soustrait le score final adverse de la ligne précédente (index 5 = Col VI)
-                                        m_a_g.append(to_f(v_a) - get_val_secure(df_b, r-1, 5))
-                                        m_b_g.append(to_f(v_b) - get_val_secure(df_a, r-1, 5))
+                                v_a = df_a.iloc[r, idx_reel]
+                                v_b = df_b.iloc[r, idx_reel]
+                                
+                                # Si la ligne est vide dans les deux tableaux, on arrête
+                                if str(v_a).strip() == '' and str(v_b).strip() == '':
+                                    continue
+                                    
+                                if r == 4: # Séquence 1 : Valeur brute (ou 0 si X)
+                                    m_a_g.append(clean_val(df_a, 4, idx_reel))
+                                    m_b_g.append(clean_val(df_b, 4, idx_reel))
+                                else: # Séquences suivantes : Score actuel - Score FINAL adverse précédent (Col VI)
+                                    # Pour A : Score A actuel - Score B ligne précédente Col VI (index 5)
+                                    m_a_g.append(clean_val(df_a, r, idx_reel) - clean_val(df_b, r-1, 5))
+                                    # Pour B : Score B actuel - Score A ligne précédente Col VI (index 5)
+                                    m_b_g.append(clean_val(df_b, r, idx_reel) - clean_val(df_a, r-1, 5))
 
-                            # Affichage Terrain Gauche
+                            # --- TERRAIN DROITE (B sert) ---
+                            m_a_d, m_b_d = [], []
+                            for r in range(4, len(df_b)):
+                                v_a = df_a.iloc[r, idx_reel]
+                                v_b = df_b.iloc[r, idx_reel]
+                                
+                                if str(v_a).strip() == '' and str(v_b).strip() == '':
+                                    continue
+                                    
+                                if r == 4: # Séquence 1 brute
+                                    m_b_d.append(clean_val(df_b, 4, idx_reel))
+                                    m_a_d.append(clean_val(df_a, 4, idx_reel))
+                                else: # Séquences suivantes décalées
+                                    m_b_d.append(clean_val(df_b, r, idx_reel) - clean_val(df_a, r-1, 5))
+                                    m_a_d.append(clean_val(df_a, r, idx_reel) - clean_val(df_b, r-1, 5))
+
+                            # --- AFFICHAGE (Identique à ton style) ---
+                            # Terrain Gauche
                             rot_a_g = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=x_equipe_a)
                             rot_b_g = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
                             dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_g, n_d, rot_b_g, serveur='A')
                             
-                            max_l = max(len(m_a_g), len(m_b_g))
-                            m_a_g += [0.0] * (max_l - len(m_a_g))
-                            m_b_g += [0.0] * (max_l - len(m_b_g))
-                            
-                            s_m_a = "\n".join([f"{k+1}  {int(v)}" for k,v in enumerate(m_a_g)])
-                            s_m_b = "\n".join([f"{k+1}  {int(v)}" for k,v in enumerate(m_b_g)])
-                            s_dif = "\n".join([f"{int(va-vb):+d}" for va,vb in zip(m_a_g, m_b_g)])
-                            
-                            axes[idx_affichage,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {int(sum(m_a_g))}", color='royalblue', weight='bold', family='monospace', va='top')
-                            axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {int(sum(m_b_g))}", color='salmon', weight='bold', family='monospace', va='top')
-                            axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_dif}\n\nTotal: {int(sum(m_a_g)-sum(m_b_g)):+d}", weight='bold', family='monospace', va='top')
+                            # Sécurité longueurs et formatage
+                            def format_stats(marques, encaisses):
+                                max_l = max(len(marques), len(encaisses))
+                                m = marques + [0.0] * (max_l - len(marques))
+                                e = encaisses + [0.0] * (max_l - len(encaisses))
+                                txt_m = "\n".join([f"{k+1}  {int(v)}" for k, v in enumerate(m)])
+                                txt_e = "\n".join([f"{k+1}  {int(v)}" for k, v in enumerate(e)])
+                                txt_d = "\n".join([f"{int(mv-ev):+d}" for mv, ev in zip(m, e)])
+                                return txt_m, txt_e, txt_d, int(sum(m)), int(sum(e))
 
-                            # ==========================================
-                            # BLOC 2 : TERRAIN DROITE (Équipe B sert)
-                            # ==========================================
-                            m_a_d, m_b_d = [], []
-                            for r in range(4, len(df_b)):
-                                v_a, v_b = str(df_a.iloc[r, idx_reel]).strip(), str(df_b.iloc[r, idx_reel]).strip()
-                                if v_a != '' or v_b != '':
-                                    if r == 4: # Séquence 1 (Valeurs brutes C0R4)
-                                        m_b_d.append(to_f(v_b))
-                                        m_a_d.append(to_f(v_a))
-                                    else: # Séquences suivantes (CnRn - C5Rn-1)
-                                        # Même logique décalée : Score actuel - Score adverse final précédent
-                                        m_b_d.append(to_f(v_b) - get_val_secure(df_a, r-1, 5))
-                                        m_a_d.append(to_f(v_a) - get_val_secure(df_b, r-1, 5))
+                            tm, te, td, tot_m, tot_e = format_stats(m_a_g, m_b_g)
+                            axes[idx_affichage, 0].text(1, -1.5, f"pts marqués\n{tm}\n\nTotal: {tot_m}", color='royalblue', weight='bold', family='monospace', va='top')
+                            axes[idx_affichage, 0].text(7, -1.5, f"pts encaissés\n{te}\n\nTotal: {tot_e}", color='salmon', weight='bold', family='monospace', va='top')
+                            axes[idx_affichage, 0].text(13, -1.5, f"différence\n{td}\n\nTotal: {tot_m-tot_e:+d}", weight='bold', family='monospace', va='top')
 
-                            # Affichage Terrain Droite
+                            # Terrain Droite
                             rot_b_d = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=True)
                             dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_g, n_d, rot_b_d, serveur='B')
                             
-                            max_l_d = max(len(m_a_d), len(m_b_d))
-                            m_a_d += [0.0] * (max_l_d - len(m_a_d))
-                            m_b_d += [0.0] * (max_l_d - len(m_b_d))
-
-                            s_m_b_d = "\n".join([f"{k+1}  {int(v)}" for k,v in enumerate(m_b_d)])
-                            s_m_a_d = "\n".join([f"{k+1}  {int(v)}" for k,v in enumerate(m_a_d)])
-                            s_dif_d = "\n".join([f"{int(vb-va):+d}" for va,vb in zip(m_a_d, m_b_d)])
-                            
-                            axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n{s_m_b_d}\n\nTotal: {int(sum(m_b_d))}", color='darkorange', weight='bold', family='monospace', va='top')
-                            axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a_d}\n\nTotal: {int(sum(m_a_d))}", color='royalblue', weight='bold', family='monospace', va='top')
-                            axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_dif_d}\n\nTotal: {int(sum(m_b_d)-sum(m_a_d)):+d}", weight='bold', family='monospace', va='top')
+                            tm_d, te_d, td_d, tot_md, tot_ed = format_stats(m_b_d, m_a_d)
+                            axes[idx_affichage, 1].text(1, -1.5, f"pts marqués\n{tm_d}\n\nTotal: {tot_md}", color='darkorange', weight='bold', family='monospace', va='top')
+                            axes[idx_affichage, 1].text(7, -1.5, f"pts encaissés\n{te_d}\n\nTotal: {tot_ed}", color='royalblue', weight='bold', family='monospace', va='top')
+                            axes[idx_affichage, 1].text(13, -1.5, f"différence\n{td_d}\n\nTotal: {tot_md-tot_ed:+d}", weight='bold', family='monospace', va='top')
 
                         st.pyplot(fig_rot)
 
