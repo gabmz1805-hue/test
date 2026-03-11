@@ -1318,92 +1318,90 @@ if st.session_state.PDF_FILENAME:
                         ordre_affichage = indices_normaux + indices_avec_x
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
+                        # On identifie si l'équipe A a le X (donc commence en réception)
                         x_equipe_a = str(df_a.iloc[4, 0]).upper().strip() == 'X'
 
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
                             
-                            # ==========================================
-                            # BLOC 1 : STATS TERRAIN GAUCHE (A au service)
-                            # ==========================================
+                            # =================================================================
+                            # BLOC 1 : STATS TERRAIN GAUCHE (Équipe A est considérée au service)
+                            # =================================================================
                             m_a_g, m_b_g = [], []
-                            
                             for r in range(4, len(df_a)):
-                                val_a = str(df_a.iloc[r, idx_reel]).strip()
-                                val_b = str(df_b.iloc[r, idx_reel]).strip()
-                                
-                                if val_a != '' or val_b != '':
+                                v_a, v_b = str(df_a.iloc[r, idx_reel]).strip(), str(df_b.iloc[r, idx_reel]).strip()
+                                if v_a != '' or v_b != '':
                                     if idx_reel == 0:
-                                        # --- PREMIER TERRAIN DU MATCH ---
-                                        if r == 4: # Séquence 1
-                                            m_a_g.append(to_f(val_a))
-                                            m_b_g.append(to_f(val_b))
-                                        else: # Séquence 2, 3, 4...
-                                            # Formule : CnRn - C5R4
-                                            m_a_g.append(to_f(val_a) - get_last_s_prev(df_a, -1))
-                                            m_b_g.append(to_f(val_b) - get_last_s_prev(df_b, -1))
+                                        if r == 4: # Séquence 1 (C0R4)
+                                            m_a_g.append(to_f(v_a))
+                                            m_b_g.append(to_f(v_b))
+                                        else: # Séquences suivantes (CnRn - C5R4)
+                                            m_a_g.append(to_f(v_a) - get_last_s_prev(df_a, 5))
+                                            m_b_g.append(to_f(v_b) - get_last_s_prev(df_b, 5))
                                     else:
-                                        # --- TERRAINS SUIVANTS ---
-                                        if r == 4: # Séquence 1
-                                            # Formule : C1R4 - C0R4 (si idx_reel=1)
-                                            m_a_g.append(to_f(val_a) - to_f(df_a.iloc[4, idx_reel-1]))
-                                            m_b_g.append(to_f(val_b) - to_f(df_b.iloc[4, idx_reel-1]))
-                                        else: # Séquence 2, 3, 4...
-                                            # Formule : C1R5 - C0R5
-                                            m_a_g.append(to_f(val_a) - to_f(df_a.iloc[r, idx_reel-1]))
-                                            m_b_g.append(to_f(val_b) - to_f(df_b.iloc[r, idx_reel-1]))
+                                        if r == 4: # Séquence 1 (CnR4 - Cn-1R4)
+                                            m_a_g.append(to_f(v_a) - to_f(df_a.iloc[4, idx_reel-1]))
+                                            m_b_g.append(to_f(v_b) - to_f(df_b.iloc[4, idx_reel-1]))
+                                        else: # Séquences suivantes (CnRn - Cn-1Rn)
+                                            m_a_g.append(to_f(v_a) - to_f(df_a.iloc[r, idx_reel-1]))
+                                            m_b_g.append(to_f(v_b) - to_f(df_b.iloc[r, idx_reel-1]))
 
                             # Affichage Terrain Gauche
                             rot_a_g = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=x_equipe_a)
                             rot_b_g = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
                             dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_g, n_d, rot_b_g, serveur='A')
                             
-                            s_m_a = "\n".join([f"{k+1}  {v}" for k,v in enumerate(m_a_g)])
-                            s_m_b = "\n".join([f"{k+1}  {v}" for k,v in enumerate(m_b_g)])
-                            s_dif = "\n".join([f"{va-vb:+d}" for va,vb in zip(m_a_g, m_b_g)])
-                            axes[idx_affichage,0].text(1,-1.5, f"pts marqués\n{s_m_a}", color='royalblue', weight='bold')
-                            axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}", color='salmon', weight='bold')
-                            axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_dif}", weight='bold')
-
-                            # ==========================================
-                            # BLOC 2 : STATS TERRAIN DROITE (B au service)
-                            # ==========================================
-                            m_a_d, m_b_d = [], []
+                            # Alignement des séquences
+                            max_l = max(len(m_a_g), len(m_b_g))
+                            m_a_g += [0.0] * (max_l - len(m_a_g))
+                            m_b_g += [0.0] * (max_l - len(m_b_g))
                             
-                            # Ici on applique la logique miroir pour l'équipe B
-                            # Si on est sur le terrain de droite, l'équipe B a déjà fait sa rotation
+                            s_m_a = "\n".join([f"{k+1}  {int(v)}" for k,v in enumerate(m_a_g)])
+                            s_m_b = "\n".join([f"{k+1}  {int(v)}" for k,v in enumerate(m_b_g)])
+                            s_dif = "\n".join([f"{int(va-vb):+d}" for va,vb in zip(m_a_g, m_b_g)])
+                            
+                            axes[idx_affichage,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {int(sum(m_a_g))}", color='royalblue', weight='bold', family='monospace', va='top')
+                            axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {int(sum(m_b_g))}", color='salmon', weight='bold', family='monospace', va='top')
+                            axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_dif}\n\nTotal: {int(sum(m_a_g)-sum(m_b_g)):+d}", weight='bold', family='monospace', va='top')
+
+                            # =================================================================
+                            # BLOC 2 : STATS TERRAIN DROITE (Équipe B est considérée au service)
+                            # =================================================================
+                            m_a_d, m_b_d = [], []
                             for r in range(4, len(df_b)):
-                                val_a = str(df_a.iloc[r, idx_reel]).strip()
-                                val_b = str(df_b.iloc[r, idx_reel]).strip()
-                                
-                                if val_a != '' or val_b != '':
+                                v_a, v_b = str(df_a.iloc[r, idx_reel]).strip(), str(df_b.iloc[r, idx_reel]).strip()
+                                if v_a != '' or v_b != '':
                                     if idx_reel == 0:
-                                        # --- Premier terrain de droite ---
-                                        if r == 4:
-                                            m_a_d.append(to_f(val_a))
-                                            m_b_d.append(to_f(val_b))
-                                        else:
-                                            m_a_d.append(to_f(val_a) - get_last_s_prev(df_a, -1))
-                                            m_b_d.append(to_f(val_b) - get_last_s_prev(df_b, -1))
+                                        if r == 4: # Séquence 1
+                                            m_a_d.append(to_f(v_a))
+                                            m_b_d.append(to_f(v_b))
+                                        else: # Séquences suivantes
+                                            m_a_d.append(to_f(v_a) - get_last_s_prev(df_a, 5))
+                                            m_b_d.append(to_f(v_b) - get_last_s_prev(df_b, 5))
                                     else:
-                                        # --- Terrains suivants ---
                                         if r == 4:
-                                            # Pour B qui a tourné : C1R4 (B) vs C1R4-C0R4 (A) selon ton explication
-                                            m_b_d.append(to_f(val_b)) 
-                                            m_a_d.append(to_f(val_a) - to_f(df_a.iloc[4, idx_reel-1]))
+                                            # Logique spéciale : B marquée = Valeur brute | A encaissée = Soustraction Col N - Col N-1
+                                            m_b_d.append(to_f(v_b)) 
+                                            m_a_d.append(to_f(v_a) - to_f(df_a.iloc[4, idx_reel-1]))
                                         else:
-                                            m_b_d.append(to_f(val_b) - to_f(df_b.iloc[r, idx_reel-1]))
-                                            m_a_d.append(to_f(val_a) - to_f(df_a.iloc[r, idx_reel-1]))
+                                            m_b_d.append(to_f(v_b) - to_f(df_b.iloc[r, idx_reel-1]))
+                                            m_a_d.append(to_f(v_a) - to_f(df_a.iloc[r, idx_reel-1]))
 
                             # Affichage Terrain Droite
+                            # Side-out : B récupère le service, donc B tourne systématiquement
                             rot_b_d = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=True)
                             dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_g, n_d, rot_b_d, serveur='B')
                             
-                            s_m_b_d = "\n".join([f"{k+1}  {v}" for k,v in enumerate(m_b_d)])
-                            s_m_a_d = "\n".join([f"{k+1}  {v}" for k,v in enumerate(m_a_d)])
-                            s_dif_d = "\n".join([f"{vb-va:+d}" for va,vb in zip(m_a_d, m_b_d)])
-                            axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n{s_m_b_d}", color='darkorange', weight='bold')
-                            axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a_d}", color='royalblue', weight='bold')
-                            axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_dif_d}", weight='bold')
+                            max_l_d = max(len(m_a_d), len(m_b_d))
+                            m_a_d += [0.0] * (max_l_d - len(m_a_d))
+                            m_b_d += [0.0] * (max_l_d - len(m_b_d))
+
+                            s_m_b_d = "\n".join([f"{k+1}  {int(v)}" for k,v in enumerate(m_b_d)])
+                            s_m_a_d = "\n".join([f"{k+1}  {int(v)}" for k,v in enumerate(m_a_d)])
+                            s_dif_d = "\n".join([f"{int(vb-va):+d}" for va,vb in zip(m_a_d, m_b_d)])
+                            
+                            axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n{s_m_b_d}\n\nTotal: {int(sum(m_b_d))}", color='darkorange', weight='bold', family='monospace', va='top')
+                            axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a_d}\n\nTotal: {int(sum(m_a_d))}", color='royalblue', weight='bold', family='monospace', va='top')
+                            axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_dif_d}\n\nTotal: {int(sum(m_b_d)-sum(m_a_d)):+d}", weight='bold', family='monospace', va='top')
 
                         st.pyplot(fig_rot)
 
