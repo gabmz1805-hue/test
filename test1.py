@@ -1340,54 +1340,51 @@ if st.session_state.PDF_FILENAME:
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
-                          # --- 1. EXTRACTION DES SCORES BRUTS ---
-                          scores_raw_a = extraire_points_rotation(df_a, idx_reel)
-                          scores_raw_b = extraire_points_rotation(df_b, idx_reel)
+                          # --- CALCULS PRÉALABLES ---
+                          # Points marqués par A sur son service (colonne idx_reel)
+                          raw_a = extraire_points_rotation(df_a, idx_reel)
+                          gains_a = calculer_gains_reels(raw_a, df_a, idx_reel)
+                          
+                          # Points marqués par B sur son service (colonne idx_reel)
+                          raw_b = extraire_points_rotation(df_b, idx_reel)
+                          gains_b = calculer_gains_reels(raw_b, df_b, idx_reel)
 
-                          # --- 2. CALCUL DES GAINS (Deltas) ---
-                          gains_a = calculer_gains_reels(scores_raw_a, df_a, idx_reel)
-                          gains_b = calculer_gains_reels(scores_raw_b, df_b, idx_reel)
-
-                          # --- 3. TERRAIN GAUCHE (A au service) ---
-                          # Logique de rotation identique à votre demande précédente
-                          if idx_reel == 0:
+                          # --- TERRAIN GAUCHE (A au service) ---
+                          # Positions : Base (0) pour le premier service, sinon selon logique X
+                          if idx_reel == 0 and str(df_a.iloc[4, 0]).upper().strip() != 'X':
                               rot_a_srv = obtenir_rotation_positions(base_a, 0, doit_tourner=False)
                               rot_b_rcv = obtenir_rotation_positions(base_b, 0, doit_tourner=False)
                           else:
                               a_rec_prem = str(df_a.iloc[4, 0]).upper().strip() == 'X'
                               rot_a_srv = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=a_rec_prem)
                               rot_b_rcv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
-
+                          
                           dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_srv, n_d, rot_b_rcv, serveur='A')
 
-                          # Affichage Stats Gauche (A sert vs B reçoit)
-                          if gains_a or gains_b:
-                              max_l = max(len(gains_a), len(gains_b))
-                              p_a = gains_a + [0]*(max_l - len(gains_a))
-                              p_b = gains_b + [0]*(max_l - len(gains_b))
-                              
-                              s_m_a = "\n".join([f"{k+1}  {v}" for k,v in enumerate(p_a)])
-                              s_m_b = "\n".join([f"{k+1}  {v}" for k,v in enumerate(p_b)])
-                              # Différence pour le serveur A
-                              s_dif = "\n".join([f"{va-vb:+d}" for va,vb in zip(p_a, p_b)])
-                              
-                              axes[idx_affichage,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {sum(gains_a)}", family='monospace', weight='bold', va='top', color='royalblue')
-                              axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b}\n\nTotal: {sum(gains_b)}", family='monospace', weight='bold', va='top', color='salmon')
-                              axes[idx_affichage,0].text(13,-1.5, f"différence\n{s_dif}\n\nTotal: {sum(gains_a)-sum(gains_b):+d}", family='monospace', weight='bold', va='top')
+                          # Affichage Stats GAUCHE : Service de A
+                          # Pts marqués = gains de A | Pts encaissés = Les points de Side-out de B (souvent 1 par séquence)
+                          # Pour simplifier selon ta demande : on compare les deux séries de service
+                          s_m_a = "\n".join([f"{k+1}  {v}" for k,v in enumerate(gains_a)])
+                          s_m_b_rec = "\n".join([f"{k+1}  {1 if k < len(gains_a) else 0}" for k in range(len(gains_a))]) # B gagne le side-out
+                          
+                          axes[idx_affichage,0].text(1,-1.5, f"pts marqués\n{s_m_a}\n\nTotal: {sum(gains_a)}", color='royalblue', weight='bold')
+                          axes[idx_affichage,0].text(7,-1.5, f"pts encaissés\n{s_m_b_rec}", color='salmon', weight='bold')
 
-                          # --- 4. TERRAIN DROITE (B au service) ---
-                          rot_a_rcv = rot_a_srv
-                          rot_b_srv = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=True)
-                          dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_rcv, n_d, rot_b_srv, serveur='B')
+                          # --- TERRAIN DROITE (B au service) ---
+                          # Rotation : B a regagné le service, donc ELLE TOURNE (+1)
+                          rot_a_rcv_droite = rot_a_srv
+                          rot_b_srv_droite = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=True)
+                          
+                          dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_rcv_droite, n_d, rot_b_srv_droite, serveur='B')
 
-                          # Affichage Stats Droite (B sert vs A reçoit)
-                          if gains_a or gains_b:
-                              # Inversion de la logique de différence pour le serveur B
-                              s_dif_b = "\n".join([f"{vb-va:+d}" for va,vb in zip(p_a, p_b)])
-                              
-                              axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n{s_m_b}\n\nTotal: {sum(gains_b)}", family='monospace', weight='bold', va='top', color='darkorange')
-                              axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a}\n\nTotal: {sum(gains_a)}", family='monospace', weight='bold', va='top', color='royalblue')
-                              axes[idx_affichage,1].text(13,-1.5, f"différence\n{s_dif_b}\n\nTotal: {sum(gains_b)-sum(gains_a):+d}", family='monospace', weight='bold', va='top')
+                          # Affichage Stats DROITE : Service de B
+                          # Ici on voit enfin les points que B a marqués sur sa propre série
+                          s_m_b = "\n".join([f"{k+1}  {v}" for k,v in enumerate(gains_b)])
+                          # Les encaissés de B sont les points marqués par A juste avant
+                          s_m_a_prec = "\n".join([f"{k+1}  {v}" for k,v in enumerate(gains_a)])
+                          
+                          axes[idx_affichage,1].text(1,-1.5, f"pts marqués\n{s_m_b}\n\nTotal: {sum(gains_b)}", color='darkorange', weight='bold')
+                          axes[idx_affichage,1].text(7,-1.5, f"pts encaissés\n{s_m_a_prec}\n\nTotal: {sum(gains_a)}", color='royalblue', weight='bold')
 
                         st.pyplot(fig_rot)
 
