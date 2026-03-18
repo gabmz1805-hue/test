@@ -1263,7 +1263,7 @@ if st.session_state.PDF_FILENAME:
 
        # --- PAGE 1 : ANALYSE TACTIQUE ---
         if page == "📊 Analyse Tactique":
-            # Affichage des effectifs
+            # Affichage des effectifs (Ton code original)
             col_left, col_right = st.columns(2)
             with col_left:
                 st.subheader(f"🏠 {EQUIPE_A}")
@@ -1293,7 +1293,7 @@ if st.session_state.PDF_FILENAME:
                         sc_a, sc_b = FINAL_SCORES.iloc[idx, 0], FINAL_SCORES.iloc[idx, 1]
                         st.info(f"🔥 ANALYSE DU {tab_name.upper()} ({EQUIPE_A} {sc_a} - {sc_b} {EQUIPE_B})")
 
-                        # Extraction des DataFrames selon le Set
+                        # Extraction des DataFrames selon le Set (Logique set pair/impair)
                         if set_num in [1, 3, 5]:
                             df_a, df_b = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME)), process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
                             tm, n_g, n_d = extract_temps_mort_set_1(st.session_state.PDF_FILENAME), EQUIPE_A, EQUIPE_B
@@ -1303,7 +1303,7 @@ if st.session_state.PDF_FILENAME:
 
                         st.write(f"⏱️ **Temps Morts :** {n_g} (`{tm[0] or '-'}` , `{tm[1] or '-'}`) | {n_d} (`{tm[2] or '-'}` , `{tm[3] or '-'}`)")
                         
-                        # --- LOGIQUE STRICTE "X" ET SEQUENCES ---
+                        # Détection stricte du X
                         x_dans_a = str(df_a.iloc[4, 0]).upper().strip() == 'X'
                         
                         v_a_start, v_b_start = df_a.iloc[0].values, df_b.iloc[0].values
@@ -1312,40 +1312,40 @@ if st.session_state.PDF_FILENAME:
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
 
-                        for idx_col in range(6):
-                            # --- BLOC TERRAIN GAUCHE ---
+                        for idx_reel in range(6):
+                            # --- TERRAIN GAUCHE ---
                             m_g, e_g = [], []
                             if not x_dans_a:
                                 for r in range(4, len(df_a)):
-                                    if str(df_a.iloc[r, idx_col]).strip() == '': break
+                                    if str(df_a.iloc[r, idx_reel]).strip() == '': break
                                     if r == 4:
-                                        m_g.append(val_score(df_a, 4, idx_col))
+                                        m_g.append(val_score(df_a, 4, idx_reel))
                                         e_g.append(0)
                                     else:
                                         m_g.append(val_score(df_a, r, 0) - val_score(df_a, 4, 5))
                                         e_g.append(val_score(df_b, r, 0) - val_score(df_b, 4, 5))
                             else:
                                 for r in range(4, len(df_b)):
-                                    if str(df_b.iloc[r, idx_col]).strip() == '': break
+                                    if str(df_b.iloc[r, idx_reel]).strip() == '': break
                                     if r == 4:
-                                        m_g.append(val_score(df_b, 4, idx_col))
+                                        m_g.append(val_score(df_b, 4, idx_reel))
                                         e_g.append(0)
                                     else:
                                         m_g.append(val_score(df_b, r, 0) - val_score(df_b, 4, 5))
                                         e_g.append(val_score(df_a, r, 0) - val_score(df_a, 4, 5))
 
-                            # Dessin Terrain Gauche
-                            rot_a_g = obtenir_rotation_positions(base_a, idx_col, doit_tourner=x_dans_a)
-                            rot_b_g = obtenir_rotation_positions(base_b, idx_col, doit_tourner=False)
-                            dessiner_rotation_couleurs(axes[idx_col, 0], n_g, rot_a_g, n_d, rot_b_g, serveur=('B' if x_dans_a else 'A'))
+                            # Dessin terrains
+                            rot_a_g = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=x_dans_a)
+                            rot_b_g = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
+                            dessiner_rotation_couleurs(axes[idx_reel, 0], n_g, rot_a_g, n_d, rot_b_g, serveur=('B' if x_dans_a else 'A'))
 
-                            # --- BLOC TERRAIN DROITE ---
+                            # --- TERRAIN DROITE ---
                             m_d, e_d = [], []
                             df_avec_x = df_a if x_dans_a else df_b
                             df_sans_x = df_b if x_dans_a else df_a
 
                             for r in range(4, len(df_avec_x)):
-                                if str(df_avec_x.iloc[r, idx_col]).strip() == '': break
+                                if str(df_avec_x.iloc[r, idx_reel]).strip() == '': break
                                 if r == 4:
                                     m_d.append(val_score(df_avec_x, 4, 1))
                                     e_d.append(val_score(df_sans_x, 4, 1) - val_score(df_sans_x, 4, 0))
@@ -1353,20 +1353,20 @@ if st.session_state.PDF_FILENAME:
                                     m_d.append(val_score(df_avec_x, r, 1) - val_score(df_avec_x, r, 0))
                                     e_d.append(val_score(df_sans_x, r, 2) - val_score(df_sans_x, r, 1))
 
-                            # Dessin Terrain Droite
-                            rot_b_d = obtenir_rotation_positions(base_b, idx_col, doit_tourner=not x_dans_a)
-                            dessiner_rotation_couleurs(axes[idx_col, 1], n_g, rot_a_g, n_d, rot_b_d, serveur=('A' if x_dans_a else 'B'))
+                            # Dessin terrains
+                            rot_b_d = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=not x_dans_a)
+                            dessiner_rotation_couleurs(axes[idx_reel, 1], n_g, rot_a_g, n_d, rot_b_d, serveur=('A' if x_dans_a else 'B'))
 
-                            # --- AFFICHAGE STATS ---
+                            # Affichage stats
                             tm_g, te_g, td_g, tot_mg, tot_eg = format_stats(m_g, e_g)
-                            axes[idx_col, 0].text(1, -1.5, f"pts marqués\n{tm_g}\n\nTotal: {tot_mg}", color='royalblue', va='top', family='monospace')
-                            axes[idx_col, 0].text(7, -1.5, f"pts encaissés\n{te_g}\n\nTotal: {tot_eg}", color='salmon', va='top', family='monospace')
-                            axes[idx_col, 0].text(13, -1.5, f"différence\n{td_g}", va='top', family='monospace')
+                            axes[idx_reel, 0].text(1, -1.5, f"pts marqués\n{tm_g}\n\nTotal: {tot_mg}", color='royalblue', va='top')
+                            axes[idx_reel, 0].text(7, -1.5, f"pts encaissés\n{te_g}\n\nTotal: {tot_eg}", color='salmon', va='top')
+                            axes[idx_reel, 0].text(13, -1.5, f"différence\n{td_g}", va='top')
 
                             tm_d, te_d, td_d, tot_md, tot_ed = format_stats(m_d, e_d)
-                            axes[idx_col, 1].text(1, -1.5, f"pts marqués\n{tm_d}\n\nTotal: {tot_md}", color='darkorange', va='top', family='monospace')
-                            axes[idx_col, 1].text(7, -1.5, f"pts encaissés\n{te_d}\n\nTotal: {tot_ed}", color='royalblue', va='top', family='monospace')
-                            axes[idx_col, 1].text(13, -1.5, f"différence\n{td_d}", va='top', family='monospace')
+                            axes[idx_reel, 1].text(1, -1.5, f"pts marqués\n{tm_d}\n\nTotal: {tot_md}", color='darkorange', va='top')
+                            axes[idx_reel, 1].text(7, -1.5, f"pts encaissés\n{te_d}\n\nTotal: {tot_ed}", color='royalblue', va='top')
+                            axes[idx_reel, 1].text(13, -1.5, f"différence\n{td_d}", va='top')
 
                         st.pyplot(fig_rot)
 
