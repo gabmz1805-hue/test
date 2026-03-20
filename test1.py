@@ -1316,58 +1316,74 @@ if st.session_state.PDF_FILENAME:
                         # Boucle sur les 6 rotations (I à VI)
                         for idx_rot in range(6):
                             
-                            # --- CALCUL TERRAIN GAUCHE (Équipe sans X) ---
-                            m_g, e_g = [], []
-                            for r in range(4, len(df_sans_x)):
-                                if str(df_sans_x.iloc[r, idx_rot]).strip() == '': break
-                                
-                                if r == 4: # Séquence 1 : C0R4
-                                    m_g.append(val_score(df_sans_x, 4, idx_rot))
-                                    e_g.append(0) # Marquage direct 0 car X est en face
-                                else: # Séquences 2+ : C0R(n) - C5R(n-1)
-                                    m_g.append(val_score(df_sans_x, r, 0) - val_score(df_sans_x, r-1, 5))
-                                    e_g.append(val_score(df_avec_x, r, 0) - val_score(df_avec_x, r-1, 5))
+                            # --- DANS TA BOUCLE : for idx_rot in range(6): ---
 
-                            # --- CALCUL TERRAIN DROITE (Équipe avec X) ---
+                            # 1. IDENTIFICATION DES RÔLES
+                            # df_a est l'équipe A, df_b est l'équipe B
+                            x_dans_a = str(df_a.iloc[4, 0]).upper().strip() == 'X'
+
+                            # Qui commence ? (L'inverse de celui qui a le X)
+                            df_commence = df_b if x_dans_a else df_a
+                            df_autre = df_a if x_dans_a else df_b
+
+                            # ---------------------------------------------------------
+                            # PREMIER BLOC (Terrain de l'équipe qui COMMENCE)
+                            # ---------------------------------------------------------
+                            m_g, e_g = [], []
+                            for r in range(4, len(df_commence)):
+                                if str(df_commence.iloc[r, idx_rot]).strip() == '': break
+                                
+                                if r == 4: # Première séquence
+                                    m_g.append(val_score(df_commence, 4, 0)) # Valeur C0R4
+                                    e_g.append(0) # Marqué 0 direct car X en face
+                                else: # Séquences 2, 3, etc.
+                                    # Règle : C0R5 - C5R4 (Ligne actuelle Col 0 - Ligne précédente Col 5)
+                                    m_g.append(val_score(df_commence, r, 0) - val_score(df_commence, r-1, 5))
+                                    e_g.append(val_score(df_autre, r, 0) - val_score(df_autre, r-1, 5))
+
+                            # ---------------------------------------------------------
+                            # DEUXIÈME BLOC (Terrain de l'autre équipe - celle avec le X)
+                            # ---------------------------------------------------------
                             m_d, e_d = [], []
-                            for r in range(4, len(df_avec_x)):
-                                if str(df_avec_x.iloc[r, idx_rot]).strip() == '': break
+                            for r in range(4, len(df_autre)):
+                                if str(df_autre.iloc[r, idx_rot]).strip() == '': break
+                                
+                                if r == 4: # Première séquence
+                                    m_d.append(val_score(df_autre, 4, 1)) # C1R4
+                                    e_d.append(val_score(df_commence, 4, 1) - val_score(df_commence, 4, 0)) # C1R4 - C0R4
+                                else: # Séquences 2, 3, etc.
+                                    # Règle : C1R(n) - C0R(n) pour marqués | C1R(n) - C0R(n) pour encaissés
+                                    m_d.append(val_score(df_autre, r, 1) - val_score(df_autre, r, 0))
+                                    e_d.append(val_score(df_commence, r, 1) - val_score(df_commence, r, 0))
+
+                            # ---------------------------------------------------------
+                            # TROISIÈME BLOC (Deuxième terrain équipe SANS X)
+                            # ---------------------------------------------------------
+                            m_g2, e_g2 = [], []
+                            for r in range(4, len(df_commence)):
+                                if str(df_commence.iloc[r, idx_rot]).strip() == '': break
                                 
                                 if r == 4: # Séquence 1
-                                    # Marqués : C1R4 | Encaissés : C1R4 - C0R4
-                                    m_d.append(val_score(df_avec_x, 4, 1))
-                                    e_d.append(val_score(df_sans_x, 4, 1) - val_score(df_sans_x, 4, 0))
-                                else: # Séquences 2+
-                                    # Marqués : C1R(n) - C0R(n) | Encaissés : C2R(n) - C1R(n)
-                                    m_d.append(val_score(df_avec_x, r, 1) - val_score(df_avec_x, r, 0))
-                                    e_d.append(val_score(df_sans_x, r, 2) - val_score(df_sans_x, r, 1))
+                                    m_g2.append(val_score(df_commence, 4, 1) - val_score(df_commence, 4, 0)) # C1R4 - C0R4
+                                    e_g2.append(val_score(df_autre, 4, 2) - val_score(df_autre, 4, 1)) # C2R4 - C1R4
+                                else: # Séquences 2, 3...
+                                    m_g2.append(val_score(df_commence, r, 1) - val_score(df_commence, r, 0)) # C1R5 - C0R5
+                                    e_g2.append(val_score(df_autre, r, 2) - val_score(df_autre, r, 1)) # C2R5 - C1R5
 
-                            # --- DESSIN DES TERRAINS ---
-                            # Terrain Gauche
-                            rot_a_g = obtenir_rotation_positions(base_a, idx_rot, doit_tourner=x_dans_a)
-                            rot_b_g = obtenir_rotation_positions(base_b, idx_rot, doit_tourner=False)
-                            dessiner_rotation_couleurs(axes[idx_rot, 0], n_g, rot_a_g, n_d, rot_b_g, serveur=('B' if x_dans_a else 'A'))
-                            
-                            # Terrain Droite
-                            rot_b_d = obtenir_rotation_positions(base_b, idx_rot, doit_tourner=True)
-                            dessiner_rotation_couleurs(axes[idx_rot, 1], n_g, rot_a_g, n_d, rot_b_d, serveur=('A' if x_dans_a else 'B'))
-
-                            # --- AFFICHAGE DES TEXTES STATS ---
-                            # Terrain Gauche
-                            tm_g, te_g, td_g, tot_mg, tot_eg = format_stats(m_g, e_g)
-                            axes[idx_rot, 0].text(1, -1.5, f"pts marqués\n{tm_g}\n\nTotal: {tot_mg}", color='royalblue', family='monospace', va='top')
-                            axes[idx_rot, 0].text(7, -1.5, f"pts encaissés\n{te_g}\n\nTotal: {tot_eg}", color='salmon', family='monospace', va='top')
-                            axes[idx_rot, 0].text(13, -1.5, f"différence\n{td_g}", family='monospace', va='top')
-
-                            # Terrain Droite
-                            tm_d, te_d, td_d, tot_md, tot_ed = format_stats(m_d, e_d)
-                            axes[idx_rot, 1].text(1, -1.5, f"pts marqués\n{tm_d}\n\nTotal: {tot_md}", color='darkorange', family='monospace', va='top')
-                            axes[idx_rot, 1].text(7, -1.5, f"pts encaissés\n{te_d}\n\nTotal: {tot_ed}", color='royalblue', family='monospace', va='top')
-                            axes[idx_rot, 1].text(13, -1.5, f"différence\n{td_d}", family='monospace', va='top')
-
-                        # --- VALIDATION ET AFFICHAGE FINAL DU SET ---
-                        st.pyplot(fig_rot)
-                        plt.close(fig_rot) # Important pour vider la mémoire
+                            # ---------------------------------------------------------
+                            # QUATRIÈME BLOC (Deuxième terrain équipe AVEC X)
+                            # Idem que précédent mais décalage colonne +1
+                            # ---------------------------------------------------------
+                            m_d2, e_d2 = [], []
+                            for r in range(4, len(df_autre)):
+                                if str(df_autre.iloc[r, idx_rot]).strip() == '': break
+                                
+                                if r == 4: # Séquence 1 (Décalage +1 : C2-C1 / C3-C2)
+                                    m_d2.append(val_score(df_autre, 4, 2) - val_score(df_autre, 4, 1))
+                                    e_d2.append(val_score(df_commence, 4, 3) - val_score(df_commence, 4, 2))
+                                else:
+                                    m_d2.append(val_score(df_autre, r, 2) - val_score(df_autre, r, 1))
+                                    e_d2.append(val_score(df_commence, r, 3) - val_score(df_commence, r, 2))
 
         # --- PAGE 2 : TABLEAUX DES SETS ---
         elif page == "📋 Tableaux des Sets":
