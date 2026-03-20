@@ -1267,7 +1267,7 @@ if st.session_state.PDF_FILENAME:
                     with tabs_sets[idx]:
                         set_num = idx + 1
                         
-                        # 1. Extraction des DataFrames selon le Set
+                        # 1. Extraction des DataFrames selon le Set (Alternance)
                         if set_num in [1, 3, 5]:
                             df_a, df_b = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME)), process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
                             n_g, n_d = EQUIPE_A, EQUIPE_B
@@ -1275,43 +1275,37 @@ if st.session_state.PDF_FILENAME:
                             df_b, df_a = process_and_structure_set_2_b(extract_raw_set_2_b(st.session_state.PDF_FILENAME)), process_and_structure_set_2_a(extract_raw_set_2_a(st.session_state.PDF_FILENAME))
                             n_g, n_d = EQUIPE_B, EQUIPE_A
 
-                        # Valeurs de base pour les rotations (Ligne 0)
+                        # Valeurs de base pour les rotations
                         v_a_vals, v_b_vals = df_a.iloc[0].values, df_b.iloc[0].values
                         base_a = [v_a_vals[i%6] for i in range(6)]
                         base_b = [v_b_vals[i%6] for i in range(6)]
 
+                        # Préparation du graphique (6 rotations x 2 colonnes)
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
 
-                        # On boucle sur les 6 rotations (Colonnes 0 à 5)
                         for idx_col in range(6):
-                            
-                            # --- CALCUL DES STATS POUR L'ÉQUIPE A ---
+                            # --- CALCUL DES STATS (Logique de serpentin RnCn - RnCn-1) ---
                             m_a, e_a = [], []
                             for r in range(4, len(df_a)):
-                                # Sécurité : si la case est vide, on stoppe pour cette rotation
                                 if str(df_a.iloc[r, idx_col]).strip() == '': break
                                 
-                                # LOGIQUE DE CALCUL
                                 if r == 4 and idx_col == 0:
-                                    # Toute première case du match : R4C0
+                                    # Toute première case
                                     m_a.append(val_score(df_a, 4, 0))
                                     e_a.append(val_score(df_b, 4, 0))
                                 elif idx_col == 0:
-                                    # Changement de ligne : RnC0 - R(n-1)C5
+                                    # Saut de ligne : Actuel C0 - Précédent C5
                                     m_a.append(val_score(df_a, r, 0) - val_score(df_a, r-1, 5))
                                     e_a.append(val_score(df_b, r, 0) - val_score(df_b, r-1, 5))
                                 else:
-                                    # Progression sur la ligne : RnCn - RnC(n-1)
+                                    # Progression ligne : Actuel - Colonne précédente
                                     m_a.append(val_score(df_a, r, idx_col) - val_score(df_a, r, idx_col-1))
                                     e_a.append(val_score(df_b, r, idx_col) - val_score(df_b, r, idx_col-1))
 
-                            # --- CALCUL DES STATS POUR L'ÉQUIPE B ---
-                            # (Appliqué de la même manière sur df_b)
-                            # Note : m_b et e_b sont calculés par rapport à df_b
-                            m_b, e_b = e_a, m_a # Par symétrie, ce que A encaisse, B le marque
+                            # Symétrie pour l'équipe B
+                            m_b, e_b = e_a, m_a 
 
-                            # --- DESSIN DES TERRAINS (Gauche = A, Droite = B) ---
-                            # Terrain Gauche
+                            # --- AFFICHAGE TERRAIN GAUCHE (EQUIPE A) ---
                             rot_a_g = obtenir_rotation_positions(base_a, idx_col, doit_tourner=False)
                             rot_b_g = obtenir_rotation_positions(base_b, idx_col, doit_tourner=False)
                             dessiner_rotation_couleurs(axes[idx_col, 0], n_g, rot_a_g, n_d, rot_b_g, serveur='A')
@@ -1319,13 +1313,15 @@ if st.session_state.PDF_FILENAME:
                             tm_a, te_a, td_a, tot_ma, tot_ea = format_stats(m_a, e_a)
                             axes[idx_col, 0].text(1, -1.5, f"pts marqués\n{tm_a}", color='royalblue', va='top', family='monospace')
                             axes[idx_col, 0].text(7, -1.5, f"pts encaissés\n{te_a}", color='salmon', va='top', family='monospace')
+                            axes[idx_col, 0].text(13, -1.5, f"différence\n{td_a}", color='black', weight='bold', va='top', family='monospace')
 
-                            # Terrain Droite
+                            # --- AFFICHAGE TERRAIN DROITE (EQUIPE B) ---
                             dessiner_rotation_couleurs(axes[idx_col, 1], n_g, rot_a_g, n_d, rot_b_g, serveur='B')
                             
                             tm_b, te_b, td_b, tot_mb, tot_eb = format_stats(m_b, e_b)
                             axes[idx_col, 1].text(1, -1.5, f"pts marqués\n{tm_b}", color='darkorange', va='top', family='monospace')
                             axes[idx_col, 1].text(7, -1.5, f"pts encaissés\n{te_b}", color='royalblue', va='top', family='monospace')
+                            axes[idx_col, 1].text(13, -1.5, f"différence\n{td_b}", color='black', weight='bold', va='top', family='monospace')
 
                         st.pyplot(fig_rot)
                         plt.close(fig_rot)
