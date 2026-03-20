@@ -1259,36 +1259,15 @@ if st.session_state.PDF_FILENAME:
 
         # --- PAGE 1 : ANALYSE TACTIQUE ---
         if page == "📊 Analyse Tactique":
-            # 1. Affichage des effectifs (Bloc fixe)
-            col_left, col_right = st.columns(2)
-            with col_left:
-                st.subheader(f"🏠 {EQUIPE_A}")
-                ta1, ta2, ta3 = st.tabs(["👥 Joueurs", "🛡️ Libéros", "👔 Staff"])
-                with ta1: st.dataframe(df_a_final[df_a_final['Type'] == 'Joueur'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-                with ta2: st.dataframe(df_a_final[df_a_final['Type'] == 'Libéro'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-                with ta3: st.dataframe(df_a_final[df_a_final['Type'] == 'Staff'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
+            # [Tes blocs d'affichage d'effectifs et scores restent ici...]
 
-            with col_right:
-                st.subheader(f"🚀 {EQUIPE_B}")
-                tb1, tb2, tb3 = st.tabs(["👥 Joueurs", "🛡️ Libéros", "👔 Staff"])
-                with tb1: st.dataframe(df_b_final[df_b_final['Type'] == 'Joueur'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-                with tb2: st.dataframe(df_b_final[df_b_final['Type'] == 'Libéro'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-                with tb3: st.dataframe(df_b_final[df_b_final['Type'] == 'Staff'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-
-            st.divider()
-            st.subheader("📊 Récapitulatif des Scores")
-            FINAL_SCORES_DISPLAY = FINAL_SCORES.copy()
-            FINAL_SCORES_DISPLAY.columns = [f"Score {EQUIPE_A}", f"Score {EQUIPE_B}"]
-            st.table(FINAL_SCORES_DISPLAY)
-
-            # 2. Boucle des Sets
             if sets_joues:
                 tabs_sets = st.tabs(sets_joues)
                 for idx, tab_name in enumerate(sets_joues):
                     with tabs_sets[idx]:
                         set_num = idx + 1
                         
-                        # Extraction des DataFrames selon le Set (Logique alternée)
+                        # Extraction des DataFrames selon le Set
                         if set_num in [1, 3, 5]:
                             df_a, df_b = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME)), process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
                             n_g, n_d = EQUIPE_A, EQUIPE_B
@@ -1296,113 +1275,79 @@ if st.session_state.PDF_FILENAME:
                             df_b, df_a = process_and_structure_set_2_b(extract_raw_set_2_b(st.session_state.PDF_FILENAME)), process_and_structure_set_2_a(extract_raw_set_2_a(st.session_state.PDF_FILENAME))
                             n_g, n_d = EQUIPE_B, EQUIPE_A
 
-                        st.info(f"🔥 ANALYSE DU {tab_name.upper()}")
-                        
-                        # Détection du "X" (C0R4 -> [4, 0])
+                        # Détection du X
                         x_dans_a = str(df_a.iloc[4, 0]).upper().strip() == 'X'
-                        
-                        # Assignation des rôles selon ta consigne
                         df_sans_x = df_b if x_dans_a else df_a
                         df_avec_x = df_a if x_dans_a else df_b
                         
-                        # Initialisation de la figure Matplotlib pour ce Set
-                        fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
+                        # Configuration de la figure : 12 lignes (6 rotations * 2 terrains)
+                        fig_rot, axes = plt.subplots(12, 1, figsize=(15, 80)) # Une seule colonne pour empiler
                         
-                        # Valeurs de base pour les rotations
                         v_a_vals, v_b_vals = df_a.iloc[0].values, df_b.iloc[0].values
-                        base_a = [v_a_vals[i%6] for i in range(6)]
-                        base_b = [v_b_vals[i%6] for i in range(6)]
+                        base_a, base_b = [v_a_vals[i%6] for i in range(6)], [v_b_vals[i%6] for i in range(6)]
 
-                        # Boucle sur les 6 rotations (I à VI)
                         for idx_rot in range(6):
-                            
-                            # --- DANS TA BOUCLE : for idx_rot in range(6): ---
+                            # --- CALCULS (Logique respectée à la lettre) ---
+                            m_g, e_g, m_d, e_d = [], [], [], []
+                            m_g2, e_g2, m_d2, e_d2 = [], [], [], []
 
-                            # 1. IDENTIFICATION DES RÔLES (X dans A ou B)
-                            x_dans_a = str(df_a.iloc[4, 0]).upper().strip() == 'X'
-                            df_commence = df_b if x_dans_a else df_a  # L'équipe sans X
-                            df_wait = df_a if x_dans_a else df_b      # L'équipe avec X
-
-                            # --- CALCULS STATS (Respect de la consigne à la lettre) ---
-                            m_g, e_g = [], []   # Terrain 1 - Équipe sans X
-                            m_d, e_d = [], []   # Terrain 1 - Équipe avec X
-                            m_g2, e_g2 = [], [] # Terrain 2 - Équipe sans X
-                            m_d2, e_d2 = [], [] # Terrain 2 - Équipe avec X
-
-                            # Boucle de calcul sur les lignes du set
-                            for r in range(4, len(df_commence)):
-                                if str(df_commence.iloc[r, idx_rot]).strip() == '': break
-                                
-                                # --- TERRAIN 1 (ÉQUIPE SANS X) ---
+                            # 1. Équipe SANS X (Terrain Gauche)
+                            for r in range(4, len(df_sans_x)):
+                                if str(df_sans_x.iloc[r, idx_rot]).strip() == '': break
                                 if r == 4:
-                                    m_g.append(val_score(df_commence, 4, 0)) # C0R4
+                                    m_g.append(val_score(df_sans_x, 4, 0))
                                     e_g.append(0)
+                                    m_g2.append(val_score(df_sans_x, 4, 1) - val_score(df_sans_x, 4, 0))
+                                    e_g2.append(val_score(df_avec_x, 4, 2) - val_score(df_avec_x, 4, 1))
                                 else:
-                                    m_g.append(val_score(df_commence, r, 0) - val_score(df_commence, r-1, 5)) # C0R5-C5R4
-                                    e_g.append(val_score(df_wait, r, 0) - val_score(df_wait, r-1, 5))
+                                    m_g.append(val_score(df_sans_x, r, 0) - val_score(df_sans_x, r-1, 5))
+                                    e_g.append(val_score(df_avec_x, r, 0) - val_score(df_avec_x, r-1, 5))
+                                    m_g2.append(val_score(df_sans_x, r, 1) - val_score(df_sans_x, r, 0))
+                                    e_g2.append(val_score(df_avec_x, r, 2) - val_score(df_avec_x, r, 1))
 
-                                # --- TERRAIN 2 (ÉQUIPE SANS X) ---
+                            # 2. Équipe AVEC X (Terrain Droite)
+                            for r in range(4, len(df_avec_x)):
+                                if str(df_avec_x.iloc[r, idx_rot]).strip() == '': break
                                 if r == 4:
-                                    m_g2.append(val_score(df_commence, 4, 1) - val_score(df_commence, 4, 0)) # C1R4-C0R4
-                                    e_g2.append(val_score(df_wait, 4, 2) - val_score(df_wait, 4, 1)) # C2R4-C1R4
+                                    m_d.append(val_score(df_avec_x, 4, 1))
+                                    e_d.append(val_score(df_sans_x, 4, 1) - val_score(df_sans_x, 4, 0))
+                                    m_d2.append(val_score(df_avec_x, 4, 2) - val_score(df_avec_x, 4, 1))
+                                    e_d2.append(val_score(df_sans_x, 4, 3) - val_score(df_sans_x, 4, 2))
                                 else:
-                                    m_g2.append(val_score(df_commence, r, 1) - val_score(df_commence, r, 0)) # C1R5-C0R5
-                                    e_g2.append(val_score(df_wait, r, 2) - val_score(df_wait, r, 1)) # C2R5-C1R5
+                                    m_d.append(val_score(df_avec_x, r, 1) - val_score(df_avec_x, r, 0))
+                                    e_d.append(val_score(df_sans_x, r, 1) - val_score(df_sans_x, r, 0))
+                                    m_d2.append(val_score(df_avec_x, r, 2) - val_score(df_avec_x, r, 1))
+                                    e_d2.append(val_score(df_sans_x, r, 3) - val_score(df_sans_x, r, 2))
 
-                            # Boucle de calcul sur l'équipe AVEC X
-                            for r in range(4, len(df_wait)):
-                                if str(df_wait.iloc[r, idx_rot]).strip() == '': break
-                                
-                                # --- TERRAIN 1 (ÉQUIPE AVEC X) ---
-                                if r == 4:
-                                    m_d.append(val_score(df_wait, 4, 1)) # C1R4
-                                    e_d.append(val_score(df_commence, 4, 1) - val_score(df_commence, 4, 0)) # C1R4-C0R4
-                                else:
-                                    m_d.append(val_score(df_wait, r, 1) - val_score(df_wait, r, 0)) # C1R5-C0R5
-                                    e_d.append(val_score(df_commence, r, 1) - val_score(df_commence, r, 0))
-
-                                # --- TERRAIN 2 (ÉQUIPE AVEC X) ---
-                                if r == 4:
-                                    m_d2.append(val_score(df_wait, 4, 2) - val_score(df_wait, 4, 1)) # C2R4-C1R4
-                                    e_d2.append(val_score(df_commence, 4, 3) - val_score(df_commence, 4, 2)) # C3R4-C2R4
-                                else:
-                                    m_d2.append(val_score(df_wait, r, 2) - val_score(df_wait, r, 1))
-                                    e_d2.append(val_score(df_commence, r, 3) - val_score(df_commence, r, 2))
-
-                            # --- RENDU GRAPHIQUE (MATPLOTLIB) ---
-
-                            # Terrain Gauche (Affichage combiné T1 + T2)
+                            # --- AFFICHAGE : BLOC TERRAIN GAUCHE (Index Pair : 0, 2, 4...) ---
+                            ax_g = axes[idx_rot * 2]
                             rot_a_g = obtenir_rotation_positions(base_a, idx_rot, doit_tourner=x_dans_a)
                             rot_b_g = obtenir_rotation_positions(base_b, idx_rot, doit_tourner=False)
-                            dessiner_rotation_couleurs(axes[idx_rot, 0], n_g, rot_a_g, n_d, rot_b_g, serveur=('B' if x_dans_a else 'A'))
-
-                            # Stats Terrain 1 (Gauche)
+                            dessiner_rotation_couleurs(ax_g, n_g, rot_a_g, n_d, rot_b_g, serveur=('B' if x_dans_a else 'A'))
+                            
                             tm_g, te_g, td_g, tot_mg, tot_eg = format_stats(m_g, e_g)
-                            axes[idx_rot, 0].text(1, -1.5, f"T1 Marqués\n{tm_g}", color='royalblue', va='top', family='monospace', fontsize=9)
-                            axes[idx_rot, 0].text(5.5, -1.5, f"T1 Encaissés\n{te_g}", color='salmon', va='top', family='monospace', fontsize=9)
-
-                            # Stats Terrain 2 (Gauche)
                             tm_g2, te_g2, td_g2, tot_mg2, tot_eg2 = format_stats(m_g2, e_g2)
-                            axes[idx_rot, 0].text(10, -1.5, f"T2 Marqués\n{tm_g2}", color='blue', va='top', family='monospace', fontsize=9)
-                            axes[idx_rot, 0].text(14.5, -1.5, f"T2 Encaissés\n{te_g2}", color='red', va='top', family='monospace', fontsize=9)
+                            ax_g.set_title(f"ROTATION {idx_rot+1} - BLOC TERRAIN GAUCHE", fontsize=14, fontweight='bold', pad=20)
+                            ax_g.text(1, -1.5, f"Pts Marqués (T1)\n{tm_g}", color='blue', va='top', family='monospace')
+                            ax_g.text(6, -1.5, f"Pts Encaissés (T1)\n{te_g}", color='red', va='top', family='monospace')
+                            ax_g.text(11, -1.5, f"Pts Marqués (T2)\n{tm_g2}", color='darkblue', va='top', family='monospace')
+                            ax_g.text(16, -1.5, f"Pts Encaissés (T2)\n{te_g2}", color='darkred', va='top', family='monospace')
 
-                            # Terrain Droite (Affichage combiné T1 + T2)
+                            # --- AFFICHAGE : BLOC TERRAIN DROITE (Index Impair : 1, 3, 5...) ---
+                            ax_d = axes[idx_rot * 2 + 1]
                             rot_b_d = obtenir_rotation_positions(base_b, idx_rot, doit_tourner=True)
-                            dessiner_rotation_couleurs(axes[idx_rot, 1], n_g, rot_a_g, n_d, rot_b_d, serveur=('A' if x_dans_a else 'B'))
-
-                            # Stats Terrain 1 (Droite)
+                            dessiner_rotation_couleurs(ax_d, n_g, rot_a_g, n_d, rot_b_d, serveur=('A' if x_dans_a else 'B'))
+                            
                             tm_d, te_d, td_d, tot_md, tot_ed = format_stats(m_d, e_d)
-                            axes[idx_rot, 1].text(1, -1.5, f"T1 Marqués\n{tm_d}", color='darkorange', va='top', family='monospace', fontsize=9)
-                            axes[idx_rot, 1].text(5.5, -1.5, f"T1 Encaissés\n{te_d}", color='royalblue', va='top', family='monospace', fontsize=9)
-
-                            # Stats Terrain 2 (Droite)
                             tm_d2, te_d2, td_d2, tot_md2, tot_ed2 = format_stats(m_d2, e_d2)
-                            axes[idx_rot, 1].text(10, -1.5, f"T2 Marqués\n{tm_d2}", color='orange', va='top', family='monospace', fontsize=9)
-                            axes[idx_rot, 1].text(14.5, -1.5, f"T2 Encaissés\n{te_d2}", color='blue', va='top', family='monospace', fontsize=9)
+                            ax_d.set_title(f"ROTATION {idx_rot+1} - BLOC TERRAIN DROITE", fontsize=14, fontweight='bold', pad=20)
+                            ax_d.text(1, -1.5, f"Pts Marqués (T1)\n{tm_d}", color='orange', va='top', family='monospace')
+                            ax_d.text(6, -1.5, f"Pts Encaissés (T1)\n{te_d}", color='blue', va='top', family='monospace')
+                            ax_d.text(11, -1.5, f"Pts Marqués (T2)\n{tm_d2}", color='darkorange', va='top', family='monospace')
+                            ax_d.text(16, -1.5, f"Pts Encaissés (T2)\n{te_d2}", color='darkblue', va='top', family='monospace')
 
-                            # --- FIN DE LA BOUCLE ---
-                            # En dehors de la boucle for idx_rot :
-                            st.pyplot(fig_rot)
+                        st.pyplot(fig_rot)
+                        plt.close(fig_rot)
 
         # --- PAGE 2 : TABLEAUX DES SETS ---
         elif page == "📋 Tableaux des Sets":
