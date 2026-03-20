@@ -1263,17 +1263,15 @@ if st.session_state.PDF_FILENAME:
 
        # --- PAGE 1 : ANALYSE TACTIQUE ---
         if page == "📊 Analyse Tactique":
-            # [Affichage des effectifs et scores...]
+            # [Bloc affichage effectifs et scores inchangé...]
 
             if sets_joues:
                 tabs_sets = st.tabs(sets_joues)
                 for idx, tab_name in enumerate(sets_joues):
                     with tabs_sets[idx]:
                         set_num = idx + 1
-                        sc_a, sc_b = FINAL_SCORES.iloc[idx, 0], FINAL_SCORES.iloc[idx, 1]
-                        st.info(f"🔥 ANALYSE DU {tab_name.upper()} ({EQUIPE_A} {sc_a} - {sc_b} {EQUIPE_B})")
-
-                        # Extraction des DataFrames (Logique par set)
+                        
+                        # Détermination des tableaux A et B selon le Set (Inversion 2 & 4)
                         if set_num in [1, 3, 5]:
                             df_a, df_b = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME)), process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
                             n_g, n_d = EQUIPE_A, EQUIPE_B
@@ -1281,62 +1279,66 @@ if st.session_state.PDF_FILENAME:
                             df_b, df_a = process_and_structure_set_2_b(extract_raw_set_2_b(st.session_state.PDF_FILENAME)), process_and_structure_set_2_a(extract_raw_set_2_a(st.session_state.PDF_FILENAME))
                             n_g, n_d = EQUIPE_B, EQUIPE_A
 
-                        # Détection du X (C0R4)
+                        # Identification de l'équipe qui a le X en C0R4
                         x_dans_a = str(df_a.iloc[4, 0]).upper().strip() == 'X'
                         
-                        v_a_vals, v_b_vals = df_a.iloc[0].values, df_b.iloc[0].values
-                        base_a = [v_a_vals[i%6] for i in range(6)]
-                        base_b = [v_b_vals[i%6] for i in range(6)]
+                        # Définition de qui commence (celui qui n'a pas le X)
+                        df_start = df_b if x_dans_a else df_a
+                        df_wait = df_a if x_dans_a else df_b
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
 
-                        for idx_reel in range(6):
-                            # --- TERRAIN GAUCHE (Celui qui sert en premier) ---
+                        for idx_rot in range(6):
+                            # --- 1ER BLOC : TERRAIN DE L'EQUIPE SANS X (Celle qui commence) ---
                             m_g, e_g = [], []
-                            df_serveur_g = df_b if x_dans_a else df_a
-                            df_receveur_g = df_a if x_dans_a else df_b
-
-                            for r in range(4, len(df_serveur_g)):
-                                if str(df_serveur_g.iloc[r, idx_reel]).strip() == '': break
+                            for r in range(4, len(df_start)):
+                                if str(df_start.iloc[r, idx_rot]).strip() == '': break
+                                
                                 if r == 4: # Séquence 1
-                                    m_g.append(val_score(df_serveur_g, 4, idx_reel))
-                                    e_g.append(0)
-                                else: # Séquences 2+ : RnC0 - R(n-1)C5
-                                    m_g.append(val_score(df_serveur_g, r, 0) - val_score(df_serveur_g, r-1, 5))
-                                    e_g.append(val_score(df_receveur_g, r, 0) - val_score(df_receveur_g, r-1, 5))
+                                    m_g.append(val_score(df_start, 4, 0)) # C0R4
+                                    e_g.append(0) # Marquage direct 0 car X en face
+                                else: # Séquences 2, 3...
+                                    # Pts marqués : C0R5-C5R4 | Pts encaissés : C0R5-C5R4 (sur l'autre tab)
+                                    m_g.append(val_score(df_start, r, 0) - val_score(df_start, 4, 5))
+                                    e_g.append(val_score(df_wait, r, 0) - val_score(df_wait, 4, 5))
 
-                            # --- TERRAIN DROITE (L'autre équipe) ---
+                            # --- 2EME BLOC : TERRAIN DE L'EQUIPE AVEC X ---
                             m_d, e_d = [], []
-                            df_serveur_d = df_a if x_dans_a else df_b
-                            df_receveur_d = df_b if x_dans_a else df_a
-
-                            for r in range(4, len(df_serveur_d)):
-                                if str(df_serveur_d.iloc[r, idx_reel]).strip() == '': break
+                            for r in range(4, len(df_wait)):
+                                if str(df_wait.iloc[r, idx_rot]).strip() == '': break
+                                
                                 if r == 4: # Séquence 1
-                                    m_d.append(val_score(df_serveur_d, 4, 1)) # C1R4
-                                    e_d.append(val_score(df_receveur_d, 4, 1) - val_score(df_receveur_d, 4, 0)) # C1R4 - C0R4
-                                else: # Séquences 2+ : RnC1 - RnC0 (Même ligne)
-                                    m_d.append(val_score(df_serveur_d, r, 1) - val_score(df_serveur_d, r, 0))
-                                    # Pour les encaissés on suit la même logique de décalage C2-C1
-                                    e_d.append(val_score(df_receveur_d, r, 2) - val_score(df_receveur_d, r, 1))
+                                    m_d.append(val_score(df_wait, 4, 1)) # C1R4
+                                    e_d.append(val_score(df_start, 4, 1) - val_score(df_start, 4, 0)) # C1R4-C0R4
+                                else: # Séquences 2, 3...
+                                    # Pts marqués : C1R5-C0R5 | Pts encaissés : C1R5-C0R5 (sur l'autre tab)
+                                    # Attention : Ta consigne dit C1R5-C0R5 pour marqués ET C1R5-C0R5 pour encaissés
+                                    m_d.append(val_score(df_wait, r, 1) - val_score(df_wait, r, 0))
+                                    e_d.append(val_score(df_start, r, 1) - val_score(df_start, r, 0))
 
-                            # --- DESSIN ET AFFICHAGE ---
-                            rot_a_g = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=x_dans_a)
-                            rot_b_g = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
-                            dessiner_rotation_couleurs(axes[idx_reel, 0], n_g, rot_a_g, n_d, rot_b_g, serveur=('B' if x_dans_a else 'A'))
+                            # --- 3EME BLOC : DEUXIEME TERRAIN SANS X ---
+                            # (Note : Si tu veux afficher ces stats, il faut un 3ème graphique ou les cumuler)
+                            # Ici j'applique ta règle de décalage C1R4-C0R4 / C2R4-C1R4
+                            m_g2, e_g2 = [], []
+                            for r in range(4, len(df_start)):
+                                if str(df_start.iloc[r, idx_rot]).strip() == '': break
+                                if r == 4:
+                                    m_g2.append(val_score(df_start, 4, 1) - val_score(df_start, 4, 0))
+                                    e_g2.append(val_score(df_wait, 4, 2) - val_score(df_wait, 4, 1))
+                                else:
+                                    m_g2.append(val_score(df_start, r, 1) - val_score(df_start, r, 0))
+                                    e_g2.append(val_score(df_wait, r, 2) - val_score(df_wait, r, 1))
 
+                            # --- AFFICHAGE SUR LES AXES ---
+                            # Terrain Gauche (Equipe qui commence)
                             tm_g, te_g, td_g, tot_mg, tot_eg = format_stats(m_g, e_g)
-                            axes[idx_reel, 0].text(1, -1.5, f"pts marqués\n{tm_g}\n\nTotal: {tot_mg}", color='royalblue', family='monospace', va='top')
-                            axes[idx_reel, 0].text(7, -1.5, f"pts encaissés\n{te_g}\n\nTotal: {tot_eg}", color='salmon', family='monospace', va='top')
-                            axes[idx_reel, 0].text(13, -1.5, f"différence\n{td_g}", family='monospace', va='top')
-
-                            rot_b_d = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=True)
-                            dessiner_rotation_couleurs(axes[idx_reel, 1], n_g, rot_a_g, n_d, rot_b_d, serveur=('A' if x_dans_a else 'B'))
-
+                            axes[idx_rot, 0].text(1, -1.5, f"pts marqués\n{tm_g}", color='royalblue', va='top', family='monospace')
+                            axes[idx_rot, 0].text(7, -1.5, f"pts encaissés\n{te_g}", color='salmon', va='top', family='monospace')
+                            
+                            # Terrain Droite (Equipe avec X)
                             tm_d, te_d, td_d, tot_md, tot_ed = format_stats(m_d, e_d)
-                            axes[idx_reel, 1].text(1, -1.5, f"pts marqués\n{tm_d}\n\nTotal: {tot_md}", color='darkorange', family='monospace', va='top')
-                            axes[idx_reel, 1].text(7, -1.5, f"pts encaissés\n{te_d}\n\nTotal: {tot_ed}", color='royalblue', family='monospace', va='top')
-                            axes[idx_reel, 1].text(13, -1.5, f"différence\n{td_d}", family='monospace', va='top')
+                            axes[idx_rot, 1].text(1, -1.5, f"pts marqués\n{tm_d}", color='darkorange', va='top', family='monospace')
+                            axes[idx_rot, 1].text(7, -1.5, f"pts encaissés\n{te_d}", color='royalblue', va='top', family='monospace')
 
                         st.pyplot(fig_rot)
 
