@@ -1263,8 +1263,8 @@ if st.session_state.PDF_FILENAME:
 
         # --- PAGE 1 : ANALYSE TACTIQUE ---
         if page == "📊 Analyse Tactique":
-            # [Garder tout ton bloc d'affichage des effectifs et du tableau des scores ici...]
-            
+            # [Tes blocs d'affichage d'effectifs et scores restent ici...]
+
             if sets_joues:
                 tabs_sets = st.tabs(sets_joues)
                 for idx, tab_name in enumerate(sets_joues):
@@ -1273,40 +1273,29 @@ if st.session_state.PDF_FILENAME:
                         sc_a, sc_b = FINAL_SCORES.iloc[idx, 0], FINAL_SCORES.iloc[idx, 1]
                         st.info(f"🔥 ANALYSE DU {tab_name.upper()} ({EQUIPE_A} {sc_a} - {sc_b} {EQUIPE_B})")
 
-                        # Extraction des DataFrames (Logique par set originale)
-                        if set_num == 1:
+                        # Extraction par Set (Logique alternée)
+                        if set_num in [1, 3, 5]:
                             df_a, df_b = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME)), process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
-                            tm, n_g, n_d = extract_temps_mort_set_1(st.session_state.PDF_FILENAME), EQUIPE_A, EQUIPE_B
-                        elif set_num == 2:
+                            n_g, n_d = EQUIPE_A, EQUIPE_B
+                        else:
                             df_b, df_a = process_and_structure_set_2_b(extract_raw_set_2_b(st.session_state.PDF_FILENAME)), process_and_structure_set_2_a(extract_raw_set_2_a(st.session_state.PDF_FILENAME))
-                            tm, n_g, n_d = extract_temps_mort_set_2(st.session_state.PDF_FILENAME), EQUIPE_B, EQUIPE_A
-                        elif set_num == 3:
-                            df_a, df_b = process_and_structure_set_3_a(extract_raw_set_3_a(st.session_state.PDF_FILENAME)), process_and_structure_set_3_b(extract_raw_set_3_b(st.session_state.PDF_FILENAME))
-                            tm, n_g, n_d = extract_temps_mort_set_3(st.session_state.PDF_FILENAME), EQUIPE_A, EQUIPE_B
-                        elif set_num == 4:
-                            df_b, df_a = process_and_structure_set_4_b(extract_raw_set_4_b(st.session_state.PDF_FILENAME)), process_and_structure_set_4_a(extract_raw_set_4_a(st.session_state.PDF_FILENAME))
-                            tm, n_g, n_d = extract_temps_mort_set_4(st.session_state.PDF_FILENAME), EQUIPE_B, EQUIPE_A
-                        elif set_num == 5:
-                            df_a, df_b = process_and_structure_set_5_a(extract_raw_set_5_a(st.session_state.PDF_FILENAME)), process_and_structure_set_5_b(extract_raw_set_5_b(st.session_state.PDF_FILENAME))
-                            tm, n_g, n_d = extract_temps_mort_set_5(st.session_state.PDF_FILENAME), EQUIPE_A, EQUIPE_B
+                            n_g, n_d = EQUIPE_B, EQUIPE_A
 
-                        st.write(f"⏱️ **Temps Morts :** {EQUIPE_A} (`{tm[0] or '-'}` , `{tm[1] or '-'}`) | {EQUIPE_B} (`{tm[2] or '-'}` , `{tm[3] or '-'}`)")
-                        tracer_duel_equipes(df_a, df_b, titre=f"Évolution {tab_name}", nom_g=n_g, nom_d=n_d)
+                        # Détection du X
+                        x_dans_a = str(df_a.iloc[4, 0]).upper().strip() == 'X'
+                        
+                        v_a_vals, v_b_vals = df_a.iloc[0].values, df_b.iloc[0].values
+                        base_a = [v_a_vals[i%6] for i in range(6)]
+                        base_b = [v_b_vals[i%6] for i in range(6)]
 
-                        # --- ANALYSE ROTATIONS ---
-                        v_a, v_b = df_a.iloc[0].values, df_b.iloc[0].values
-                        base_a = [v_a[i%6] for i in range(6)]
-                        base_b = [v_b[i%6] for i in range(6)]
-
+                        # Détermination de l'ordre (X à la fin)
                         indices_normaux, indices_avec_x = [], []
                         for i in range(6):
-                            col_val = str(df_a.iloc[4, i]).upper().strip()
-                            if col_val == 'X': indices_avec_x.append(i)
+                            if str(df_a.iloc[4, i]).upper().strip() == 'X': indices_avec_x.append(i)
                             else: indices_normaux.append(i)
                         ordre_affichage = indices_normaux + indices_avec_x
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
-                        x_equipe_a = str(df_a.iloc[4, 0]).upper().strip() == 'X'
 
                         for idx_affichage, idx_reel in enumerate(ordre_affichage):
 
@@ -1315,21 +1304,17 @@ if st.session_state.PDF_FILENAME:
                             for r in range(4, len(df_a)):
                                 if str(df_a.iloc[r, idx_reel]).strip() == '' and str(df_b.iloc[r, idx_reel]).strip() == '':
                                     continue
-
-                                if not x_equipe_a: # Cas équipe A commence
-                                    if r == 4:
+                                
+                                if r == 4: # Séquence 1
+                                    if not x_dans_a: # A commence
                                         m_a_g.append(val_score(df_a, 4, idx_reel))
-                                        m_b_g.append(0) # X dans l'autre tab
-                                    else:
-                                        m_a_g.append(val_score(df_a, r, 0) - val_score(df_a, 4, 5))
-                                        m_b_g.append(val_score(df_b, r, 0) - val_score(df_b, 4, 5))
-                                else: # Cas équipe B commence (A a le X)
-                                    if r == 4:
-                                        m_a_g.append(0) # X est ici
+                                        m_b_g.append(0)
+                                    else: # B commence
+                                        m_a_g.append(0)
                                         m_b_g.append(val_score(df_b, 4, idx_reel))
-                                    else:
-                                        m_a_g.append(val_score(df_a, r, 0) - val_score(df_a, 4, 5))
-                                        m_b_g.append(val_score(df_b, r, 0) - val_score(df_b, 4, 5))
+                                else: # Séquences 2, 3... Règle : RnC0 - R(n-1)C5
+                                    m_a_g.append(val_score(df_a, r, 0) - val_score(df_a, r-1, 5))
+                                    m_b_g.append(val_score(df_b, r, 0) - val_score(df_b, r-1, 5))
 
                             # --- TERRAIN DROITE ---
                             m_a_d, m_b_d = [], []
@@ -1337,38 +1322,30 @@ if st.session_state.PDF_FILENAME:
                                 if str(df_a.iloc[r, idx_reel]).strip() == '' and str(df_b.iloc[r, idx_reel]).strip() == '':
                                     continue
 
-                                if not x_equipe_a: # B a le X (Terrain droite pour B)
-                                    if r == 4:
-                                        m_b_d.append(val_score(df_b, 4, 1)) # C1R4
-                                        m_a_d.append(val_score(df_a, 4, 1) - val_score(df_a, 4, 0)) # C1R4 - C0R4
-                                    else:
-                                        m_b_d.append(val_score(df_b, r, 1) - val_score(df_b, r, 0)) # C1R5 - C0R5
-                                        m_a_d.append(val_score(df_a, r, 2) - val_score(df_a, r, 1)) # C2R5 - C1R5
-                                else: # A a le X (Terrain droite pour A)
-                                    if r == 4:
-                                        m_a_d.append(val_score(df_a, 4, 1)) # C1R4
-                                        m_b_d.append(val_score(df_b, 4, 1) - val_score(df_b, 4, 0)) # C1R4 - C0R4
-                                    else:
-                                        m_a_d.append(val_score(df_a, r, 1) - val_score(df_a, r, 0)) # C1R5 - C0R5
-                                        m_b_d.append(val_score(df_b, r, 2) - val_score(df_b, r, 1)) # C2R5 - C1R5
+                                if r == 4: # Séquence 1
+                                    m_a_d.append(val_score(df_a, 4, 1)) # C1R4
+                                    m_b_d.append(val_score(df_b, 4, 1) - val_score(df_b, 4, 0)) # C1R4 - C0R4
+                                else: # Séquence 2, 3... Règle : Marqué C1-C0 | Encaissé C2-C1
+                                    m_a_d.append(val_score(df_a, r, 1) - val_score(df_a, r, 0))
+                                    m_b_d.append(val_score(df_b, r, 2) - val_score(df_b, r, 1))
 
-                            # --- AFFICHAGE (Identique à ton style) ---
-                            rot_a_g = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=x_equipe_a)
+                            # --- AFFICHAGE ---
+                            rot_a_g = obtenir_rotation_positions(base_a, idx_reel, doit_tourner=x_dans_a)
                             rot_b_g = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=False)
-                            dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_g, n_d, rot_b_g, serveur='A')
+                            dessiner_rotation_couleurs(axes[idx_affichage, 0], n_g, rot_a_g, n_d, rot_b_g, serveur=('B' if x_dans_a else 'A'))
 
-                            tm, te, td, tot_m, tot_e = format_stats(m_a_g, m_b_g)
-                            axes[idx_affichage, 0].text(1, -1.5, f"pts marqués\n{tm}\n\nTotal: {tot_m}", color='royalblue', weight='bold', family='monospace', va='top')
-                            axes[idx_affichage, 0].text(7, -1.5, f"pts encaissés\n{te}\n\nTotal: {tot_e}", color='salmon', weight='bold', family='monospace', va='top')
-                            axes[idx_affichage, 0].text(13, -1.5, f"différence\n{td}\n\nTotal: {tot_m-tot_e:+d}", weight='bold', family='monospace', va='top')
+                            tm_txt, te_txt, td_txt, tot_m, tot_e = format_stats(m_a_g, m_b_g)
+                            axes[idx_affichage, 0].text(1, -1.5, f"pts marqués\n{tm_txt}\n\nTotal: {tot_m}", color='royalblue', family='monospace', va='top')
+                            axes[idx_affichage, 0].text(7, -1.5, f"pts encaissés\n{te_txt}\n\nTotal: {tot_e}", color='salmon', family='monospace', va='top')
+                            axes[idx_affichage, 0].text(13, -1.5, f"différence\n{td_txt}", family='monospace', va='top')
 
                             rot_b_d = obtenir_rotation_positions(base_b, idx_reel, doit_tourner=True)
-                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_g, n_d, rot_b_d, serveur='B')
+                            dessiner_rotation_couleurs(axes[idx_affichage, 1], n_g, rot_a_g, n_d, rot_b_d, serveur=('A' if x_dans_a else 'B'))
 
-                            tm_d, te_d, td_d, tot_md, tot_ed = format_stats(m_b_d, m_a_d)
-                            axes[idx_affichage, 1].text(1, -1.5, f"pts marqués\n{tm_d}\n\nTotal: {tot_md}", color='darkorange', weight='bold', family='monospace', va='top')
-                            axes[idx_affichage, 1].text(7, -1.5, f"pts encaissés\n{te_d}\n\nTotal: {tot_ed}", color='royalblue', weight='bold', family='monospace', va='top')
-                            axes[idx_affichage, 1].text(13, -1.5, f"différence\n{td_d}\n\nTotal: {tot_md-tot_ed:+d}", weight='bold', family='monospace', va='top')
+                            tm_d, te_d, td_d, tot_md, tot_ed = format_stats(m_a_d, m_b_d)
+                            axes[idx_affichage, 1].text(1, -1.5, f"pts marqués\n{tm_d}\n\nTotal: {tot_md}", color='darkorange', family='monospace', va='top')
+                            axes[idx_affichage, 1].text(7, -1.5, f"pts encaissés\n{te_d}\n\nTotal: {tot_ed}", color='royalblue', family='monospace', va='top')
+                            axes[idx_affichage, 1].text(13, -1.5, f"différence\n{td_d}", family='monospace', va='top')
 
                         st.pyplot(fig_rot)
 
