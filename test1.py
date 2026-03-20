@@ -1311,17 +1311,17 @@ if st.session_state.PDF_FILENAME:
                             dessiner_rotation_couleurs(axes[idx_col, 0], n_g, rot_a_g, n_d, rot_b_g, serveur='A')
                             
                             tm_a, te_a, td_a, tot_ma, tot_ea = format_stats(m_a, e_a)
-                            axes[idx_col, 0].text(1, -1.5, f"pts marqués\n{tm_a}", color='royalblue', va='top', family='monospace')
-                            axes[idx_col, 0].text(7, -1.5, f"pts encaissés\n{te_a}", color='salmon', va='top', family='monospace')
-                            axes[idx_col, 0].text(13, -1.5, f"différence\n{td_a}", color='black', weight='bold', va='top', family='monospace')
+                            axes[idx_col, 0].text(1, -1.5, f"pts marqués\n{tm_a}\n\nTotal: {tot_ma}", color='royalblue', va='top', family='monospace')
+                            axes[idx_col, 0].text(7, -1.5, f"pts encaissés\n{te_a}\n\nTotal: {tot_ea}", color='salmon', va='top', family='monospace')
+                            axes[idx_col, 0].text(13, -1.5, f"différence\n{td_a}\n\nTotal: {tot_ma-tot_ea:+d}", color='black', weight='bold', va='top', family='monospace')
 
                             # --- AFFICHAGE TERRAIN DROITE (EQUIPE B) ---
                             dessiner_rotation_couleurs(axes[idx_col, 1], n_g, rot_a_g, n_d, rot_b_g, serveur='B')
                             
                             tm_b, te_b, td_b, tot_mb, tot_eb = format_stats(m_b, e_b)
-                            axes[idx_col, 1].text(1, -1.5, f"pts marqués\n{tm_b}", color='darkorange', va='top', family='monospace')
-                            axes[idx_col, 1].text(7, -1.5, f"pts encaissés\n{te_b}", color='royalblue', va='top', family='monospace')
-                            axes[idx_col, 1].text(13, -1.5, f"différence\n{td_b}", color='black', weight='bold', va='top', family='monospace')
+                            axes[idx_col, 1].text(1, -1.5, f"pts marqués\n{tm_b}\n\nTotal: {tot_mb}", color='darkorange', va='top', family='monospace')
+                            axes[idx_col, 1].text(7, -1.5, f"pts encaissés\n{te_b}\n\nTotal: {tot_eb}", color='royalblue', va='top', family='monospace')
+                            axes[idx_col, 1].text(13, -1.5, f"différence\n{td_b}\n\nTotal: {tot_mb-tot_eb:+d}", color='black', weight='bold', va='top', family='monospace')
 
                         st.pyplot(fig_rot)
                         plt.close(fig_rot)
