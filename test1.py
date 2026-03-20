@@ -1203,42 +1203,12 @@ def afficher_page_tableaux(sets_joues, PDF_FILENAME, EQUIPE_A, EQUIPE_B):
 # ÉTAPE 3 : Pilotage, Validation et Navigation (Version Fusionnée)
 # ======================================================================
 
-# --- 1. NAVIGATION & INITIALISATION ---
+# --- 1. INITIALISATION & NAVIGATION ---
 if st.session_state.PDF_FILENAME:
-    # Identification globale
+    # Identification des noms d'équipes
     EQUIPE_A, EQUIPE_B = process_and_structure_noms_equipes(st.session_state.PDF_FILENAME)
 
-    # Sidebar : Attribution des Équipes
-    st.sidebar.divider()
-    st.sidebar.subheader("⚙️ Attribution des Équipes")
-
-    df_j = extraire_joueurs_df(st.session_state.PDF_FILENAME).rename(columns={'Numero': 'ID'})
-    df_l = extraire_liberos_df(st.session_state.PDF_FILENAME).rename(columns={'Numero': 'ID'})
-    df_s = extraire_staff_df(st.session_state.PDF_FILENAME).rename(columns={'Code': 'ID'})
-
-    df_j['Type'], df_l['Type'], df_s['Type'] = 'Joueur', 'Libéro', 'Staff'
-    df_all = pd.concat([df_j, df_l, df_s], ignore_index=True)
-
-    if not df_all.empty:
-        df_all['Équipe'] = EQUIPE_A
-        with st.sidebar.expander("📝 Assigner les membres", expanded=True):
-            df_valide = st.data_editor(
-                df_all,
-                column_config={
-                    "Équipe": st.column_config.SelectboxColumn("Équipe", options=[EQUIPE_A, EQUIPE_B], required=True),
-                    "Type": st.column_config.TextColumn("Type", disabled=True),
-                    "Identite": st.column_config.TextColumn("Nom", disabled=True),
-                    "ID": st.column_config.TextColumn("N°", disabled=True),
-                    "Licence": st.column_config.TextColumn("Licence", disabled=True)
-                },
-                hide_index=True, use_container_width=True
-            )
-        df_a_final = df_valide[df_valide['Équipe'] == EQUIPE_A]
-        df_b_final = df_valide[df_valide['Équipe'] == EQUIPE_B]
-    else:
-        df_a_final, df_b_final = pd.DataFrame(), pd.DataFrame()
-
-    # Définition de la page (Navigation)
+    # Menu de Navigation simplifié
     page = st.sidebar.radio("📋 Navigation", ["📊 Analyse Tactique", "📋 Tableaux des Sets"])
 
     # --- 2. ANALYSE DES SCORES ---
@@ -1246,6 +1216,7 @@ if st.session_state.PDF_FILENAME:
     if RAW_DATA_SCORES is not None:
         FINAL_SCORES = process_and_structure_scores(RAW_DATA_SCORES)
 
+        # Calcul du score global en sets
         sets_a, sets_b = 0, 0
         for i in range(5):
             try:
@@ -1260,36 +1231,27 @@ if st.session_state.PDF_FILENAME:
 
         # --- PAGE 1 : ANALYSE TACTIQUE ---
         if page == "📊 Analyse Tactique":
-            # Effectifs
-            col_left, col_right = st.columns(2)
-            with col_left:
-                st.subheader(f"🏠 {EQUIPE_A}")
-                ta1, ta2, ta3 = st.tabs(["👥 Joueurs", "🛡️ Libéros", "👔 Staff"])
-                with ta1: st.dataframe(df_a_final[df_a_final['Type'] == 'Joueur'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-                with ta2: st.dataframe(df_a_final[df_a_final['Type'] == 'Libéro'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-                with ta3: st.dataframe(df_a_final[df_a_final['Type'] == 'Staff'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-
-            with col_right:
-                st.subheader(f"🚀 {EQUIPE_B}")
-                tb1, tb2, tb3 = st.tabs(["👥 Joueurs", "🛡️ Libéros", "👔 Staff"])
-                with tb1: st.dataframe(df_b_final[df_b_final['Type'] == 'Joueur'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-                with tb2: st.dataframe(df_b_final[df_b_final['Type'] == 'Libéro'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-                with tb3: st.dataframe(df_b_final[df_b_final['Type'] == 'Staff'][['ID', 'Identite', 'Licence']], use_container_width=True, hide_index=True)
-
-            st.divider()
+            
+            # Tableau récapitulatif des scores du match
             st.subheader("📊 Récapitulatif des Scores du Match")
             FINAL_SCORES_DISPLAY = FINAL_SCORES.copy()
             FINAL_SCORES_DISPLAY.columns = [f"Score {EQUIPE_A}", f"Score {EQUIPE_B}"]
             FINAL_SCORES_DISPLAY.insert(0, "Set", [f"Set {i+1}" for i in range(len(FINAL_SCORES_DISPLAY))])
             st.table(FINAL_SCORES_DISPLAY)
+            st.divider()
 
+            # Analyse détaillée par set
             if sets_joues:
                 tabs_sets = st.tabs(sets_joues)
                 for idx, tab_name in enumerate(sets_joues):
                     with tabs_sets[idx]:
                         set_num = idx + 1
+                        sc_a, sc_b = FINAL_SCORES.iloc[idx, 0], FINAL_SCORES.iloc[idx, 1]
+
+                        # Bandeau avec score du set
+                        st.info(f"🔥 ANALYSE DÉTAILLÉE : {tab_name.upper()} ({EQUIPE_A} {sc_a} - {sc_b} {EQUIPE_B})")
                         
-                        # Extraction DataFrames
+                        # Extraction DataFrames et Temps Morts (Alternance selon set)
                         if set_num in [1, 3, 5]:
                             df_a, df_b = process_and_structure_set_1_a(extract_raw_set_1_a(st.session_state.PDF_FILENAME)), process_and_structure_set_1_b(extract_raw_set_1_b(st.session_state.PDF_FILENAME))
                             tm, n_g, n_d = extract_temps_mort_set_1(st.session_state.PDF_FILENAME), EQUIPE_A, EQUIPE_B
@@ -1297,26 +1259,24 @@ if st.session_state.PDF_FILENAME:
                             df_b, df_a = process_and_structure_set_2_b(extract_raw_set_2_b(st.session_state.PDF_FILENAME)), process_and_structure_set_2_a(extract_raw_set_2_a(st.session_state.PDF_FILENAME))
                             tm, n_g, n_d = extract_temps_mort_set_2(st.session_state.PDF_FILENAME), EQUIPE_B, EQUIPE_A
 
-                        st.info(f"🔥 ANALYSE DÉTAILLÉE : {tab_name.upper()}")
                         st.write(f"⏱️ **Temps Morts :** {n_g} (`{tm[0] or '-'}` , `{tm[1] or '-'}`) | {n_d} (`{tm[2] or '-'}` , `{tm[3] or '-'}`)")
                         
-                        # Graphique Duel
+                        # Graphique Duel d'évolution
                         tracer_duel_equipes(df_a, df_b, titre=f"Évolution {tab_name}", nom_g=n_g, nom_d=n_d)
                         st.divider()
 
-                        # --- ANALYSE ROTATIONS ---
+                        # --- ANALYSE DES ROTATIONS ---
                         v_a_vals, v_b_vals = df_a.iloc[0].values, df_b.iloc[0].values
-                        base_a = [v_a_vals[i%6] for i in range(6)]
-                        base_b = [v_b_vals[i%6] for i in range(6)]
+                        base_a, base_b = [v_a_vals[i%6] for i in range(6)], [v_b_vals[i%6] for i in range(6)]
 
                         fig_rot, axes = plt.subplots(6, 2, figsize=(18, 45))
 
                         for idx_col in range(6):
+                            # CALCUL SERPENTIN (RnCn - RnCn-1 ou RnC0 - Rn-1C5)
                             m_a, e_a = [], []
                             for r in range(4, len(df_a)):
                                 if str(df_a.iloc[r, idx_col]).strip() == '': break
                                 
-                                # Logique serpentin pure
                                 if r == 4 and idx_col == 0:
                                     m_a.append(val_score(df_a, 4, 0))
                                     e_a.append(val_score(df_b, 4, 0))
@@ -1326,21 +1286,20 @@ if st.session_state.PDF_FILENAME:
                                 else:
                                     m_a.append(val_score(df_a, r, idx_col) - val_score(df_a, r, idx_col-1))
                                     e_a.append(val_score(df_b, r, idx_col) - val_score(df_b, r, idx_col-1))
-
+                            
                             m_b, e_b = e_a, m_a 
 
-                            # Affichage
+                            # Rendu Graphique Gauche (Équipe A)
                             rot_a_g = obtenir_rotation_positions(base_a, idx_col, doit_tourner=False)
                             rot_b_g = obtenir_rotation_positions(base_b, idx_col, doit_tourner=False)
-                            
-                            # Gauche
                             dessiner_rotation_couleurs(axes[idx_col, 0], n_g, rot_a_g, n_d, rot_b_g, serveur='A')
+                            
                             tm_a, te_a, td_a, tot_ma, tot_ea = format_stats(m_a, e_a)
                             axes[idx_col, 0].text(1, -1.5, f"pts marqués\n{tm_a}\n\nTotal: {tot_ma}", color='royalblue', va='top', family='monospace')
                             axes[idx_col, 0].text(7, -1.5, f"pts encaissés\n{te_a}\n\nTotal: {tot_ea}", color='salmon', va='top', family='monospace')
                             axes[idx_col, 0].text(13, -1.5, f"différence\n{td_a}\n\nTotal: {tot_ma-tot_ea:+d}", color='black', weight='bold', va='top', family='monospace')
 
-                            # Droite
+                            # Rendu Graphique Droite (Équipe B)
                             dessiner_rotation_couleurs(axes[idx_col, 1], n_g, rot_a_g, n_d, rot_b_g, serveur='B')
                             tm_b, te_b, td_b, tot_mb, tot_eb = format_stats(m_b, e_b)
                             axes[idx_col, 1].text(1, -1.5, f"pts marqués\n{tm_b}\n\nTotal: {tot_mb}", color='darkorange', va='top', family='monospace')
